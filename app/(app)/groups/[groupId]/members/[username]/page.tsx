@@ -24,7 +24,7 @@ export async function generateMetadata({
   params,
 }: PageProps<"/groups/[groupId]/members/[username]">): Promise<Metadata> {
   const { username } = await params;
-  return { title: `@${username} · FIFA Tracker` };
+  return { title: `@${username} · Bragging Rights` };
 }
 
 export default async function GroupMemberH2HPage({

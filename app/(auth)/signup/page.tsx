@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata: Metadata = { title: "Create account · FIFA Tracker" };
+export const metadata: Metadata = { title: "Create account · Bragging Rights" };
 
 export default function SignupPage() {
   return (

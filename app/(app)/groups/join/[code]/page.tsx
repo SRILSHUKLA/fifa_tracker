@@ -7,7 +7,7 @@ import { JoinGroupForm } from "@/components/groups/join-group-form";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Join a group · FIFA Tracker" };
+export const metadata: Metadata = { title: "Join a group · Bragging Rights" };
 
 /**
  * Target of a shared invite link (`/groups/join/[code]`). Prefills the code

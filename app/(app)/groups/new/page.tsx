@@ -7,7 +7,7 @@ import { GroupForm } from "@/components/groups/group-form";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Create a group · FIFA Tracker" };
+export const metadata: Metadata = { title: "Create a group · Bragging Rights" };
 
 export default async function NewGroupPage() {
   const supabase = await createClient();

@@ -15,12 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FIFA Tracker",
+  title: "Bragging Rights",
   description: "Log 1v1 FIFA results, track head-to-heads, settle the argument.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "FIFA Tracker",
+    title: "Bragging Rights",
     statusBarStyle: "black-translucent",
   },
 };

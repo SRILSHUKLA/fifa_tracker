@@ -7,7 +7,7 @@ import { JoinGroupForm } from "@/components/groups/join-group-form";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Join a group · FIFA Tracker" };
+export const metadata: Metadata = { title: "Join a group · Bragging Rights" };
 
 export default async function JoinGroupPage() {
   const supabase = await createClient();

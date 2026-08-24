@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata: Metadata = { title: "Sign in · FIFA Tracker" };
+export const metadata: Metadata = { title: "Sign in · Bragging Rights" };
 
 export default async function LoginPage({
   searchParams,

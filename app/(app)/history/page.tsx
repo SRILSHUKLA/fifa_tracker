@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveGroup } from "@/lib/groups/active-group";
 import { getMatches } from "@/lib/queries/matches";
 
-export const metadata: Metadata = { title: "History · FIFA Tracker" };
+export const metadata: Metadata = { title: "History · Bragging Rights" };
 
 const PAGE_SIZE = 20;
 

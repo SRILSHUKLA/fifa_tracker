@@ -30,7 +30,7 @@ export async function generateMetadata({
   const { groupId } = await params;
   const supabase = await createClient();
   const group = await getGroup(supabase, groupId);
-  return { title: group ? `${group.name} · FIFA Tracker` : "Group · FIFA Tracker" };
+  return { title: group ? `${group.name} · Bragging Rights` : "Group · Bragging Rights" };
 }
 
 export default async function GroupDetailPage({

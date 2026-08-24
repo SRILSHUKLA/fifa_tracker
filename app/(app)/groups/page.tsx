@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { getMyGroups } from "@/lib/queries/groups";
 
-export const metadata: Metadata = { title: "Groups · FIFA Tracker" };
+export const metadata: Metadata = { title: "Groups · Bragging Rights" };
 
 export default async function GroupsPage() {
   const supabase = await createClient();

@@ -9,7 +9,7 @@ import { getGroupMembers, getMyGroups } from "@/lib/queries/groups";
 import { getProfile } from "@/lib/queries/stats";
 import { getTeams } from "@/lib/queries/teams";
 
-export const metadata: Metadata = { title: "Log a match · FIFA Tracker" };
+export const metadata: Metadata = { title: "Log a match · Bragging Rights" };
 
 export default async function NewMatchPage({
   searchParams,

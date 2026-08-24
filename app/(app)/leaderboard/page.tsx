@@ -11,7 +11,7 @@ import { getActiveGroup } from "@/lib/groups/active-group";
 import { getGroupLeaderboard } from "@/lib/queries/groups";
 import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Leaderboard · FIFA Tracker" };
+export const metadata: Metadata = { title: "Leaderboard · Bragging Rights" };
 
 export default async function LeaderboardPage() {
   const supabase = await createClient();

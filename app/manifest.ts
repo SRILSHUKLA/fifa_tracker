@@ -7,8 +7,8 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "FIFA Score Tracker",
-    short_name: "FIFA Tracker",
+    name: "Bragging Rights",
+    short_name: "Bragging Rights",
     description:
       "Log 1v1 FIFA results, track head-to-heads, settle the argument.",
     start_url: "/",
