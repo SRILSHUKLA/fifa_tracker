@@ -36,9 +36,9 @@ export function resolveActiveGroup(
  * getMyGroups), which is also the fallback order resolveActiveGroup falls
  * back to when the cookie is missing or stale.
  */
-export async function getActiveGroup(supabase: Client) {
+export async function getActiveGroup(supabase: Client, userId: string) {
   const [groups, cookieStore] = await Promise.all([
-    getMyGroups(supabase),
+    getMyGroups(supabase, userId),
     cookies(),
   ]);
 

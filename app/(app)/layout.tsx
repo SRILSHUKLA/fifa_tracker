@@ -24,7 +24,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   const [{ data: profile }, { groups, active }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
-    getActiveGroup(supabase),
+    getActiveGroup(supabase, user.id),
   ]);
 
   // A signed-in user with no profile row means the handle_new_user trigger

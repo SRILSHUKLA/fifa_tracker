@@ -12,11 +12,24 @@ export type MyGroup = {
   group: Group;
 };
 
-/** Every group the current user belongs to, most recently joined first. */
-export async function getMyGroups(supabase: Client): Promise<MyGroup[]> {
+/**
+ * Every group the current user belongs to, most recently joined first.
+ *
+ * `userId` must be passed explicitly and filtered on here rather than left
+ * to RLS: the group_members SELECT policy scopes to "any row in a group you
+ * belong to" (so get_group_members can list a full roster), not "only your
+ * own rows" — an unfiltered select on this table returns one row per
+ * fellow member too, which duplicates every group you share with anyone
+ * else.
+ */
+export async function getMyGroups(
+  supabase: Client,
+  userId: string,
+): Promise<MyGroup[]> {
   const { data, error } = await supabase
     .from("group_members")
     .select("role, joined_at, group:groups(*)")
+    .eq("user_id", userId)
     .order("joined_at", { ascending: false })
     .returns<MyGroup[]>();
 

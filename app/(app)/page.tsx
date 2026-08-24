@@ -24,7 +24,7 @@ export default async function DashboardPage() {
 
   const [me, { active }] = await Promise.all([
     getProfile(supabase, user.id),
-    getActiveGroup(supabase),
+    getActiveGroup(supabase, user.id),
   ]);
 
   if (!me) redirect("/auth/signout");

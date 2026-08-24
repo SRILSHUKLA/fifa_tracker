@@ -22,7 +22,7 @@ export default async function LeaderboardPage() {
 
   if (!user) redirect("/login");
 
-  const { active } = await getActiveGroup(supabase);
+  const { active } = await getActiveGroup(supabase, user.id);
 
   if (!active) {
     return (

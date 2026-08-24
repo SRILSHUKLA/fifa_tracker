@@ -20,7 +20,7 @@ export default async function GroupsPage() {
 
   if (!user) redirect("/login");
 
-  const groups = await getMyGroups(supabase);
+  const groups = await getMyGroups(supabase, user.id);
 
   return (
     <div className="space-y-6">

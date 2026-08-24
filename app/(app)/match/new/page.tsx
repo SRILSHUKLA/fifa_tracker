@@ -28,7 +28,7 @@ export default async function NewMatchPage({
 
   const [me, myGroups, teams] = await Promise.all([
     getProfile(supabase, user.id),
-    getMyGroups(supabase),
+    getMyGroups(supabase, user.id),
     getTeams(supabase),
   ]);
 
