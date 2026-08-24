@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/empty-state";
 import { MatchCard } from "@/components/match/match-card";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { ResultBar, StatTile } from "@/components/stat-tile";
+import { TeamBadge } from "@/components/team-badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { decimal, displayName, matchDate } from "@/lib/format";
@@ -17,6 +18,7 @@ import {
   getH2HTeamStats,
   getProfileByUsername,
 } from "@/lib/queries/stats";
+import { getTeams } from "@/lib/queries/teams";
 
 export async function generateMetadata({
   params,
@@ -48,7 +50,7 @@ export default async function GroupMemberH2HPage({
   // Your own row is the group page, not a head-to-head against yourself.
   if (opponent.id === user.id) redirect(`/groups/${groupId}`);
 
-  const [stats, teamStats, matches, { data: isMember }] = await Promise.all([
+  const [stats, teamStats, matches, { data: isMember }, teams] = await Promise.all([
     getH2HStats(supabase, groupId, opponent.id),
     getH2HTeamStats(supabase, groupId, opponent.id),
     getMatches(supabase, {
@@ -61,6 +63,7 @@ export default async function GroupMemberH2HPage({
       p_group_id: groupId,
       p_user: opponent.id,
     }),
+    getTeams(supabase),
   ]);
 
   const name = displayName(opponent);
@@ -223,7 +226,17 @@ export default async function GroupMemberH2HPage({
                       }
                     >
                       <td className="py-2.5 pl-3 pr-2">
-                        <span className="font-medium">{row.team_name}</span>
+                        <span className="inline-flex items-center gap-2 font-medium">
+                          <TeamBadge
+                            team={
+                              teams.find((t) => t.id === row.team_id) ?? {
+                                name: row.team_name,
+                              }
+                            }
+                            size="sm"
+                          />
+                          {row.team_name}
+                        </span>
                         {isBestPick && (
                           <span className="ml-2 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                             Best pick

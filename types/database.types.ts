@@ -56,6 +56,8 @@ export type Database = {
           league: string;
           country: string | null;
           is_national: boolean;
+          /** Hotlinked crest/badge image, sourced from TheSportsDB. Not every team has one. */
+          logo_url: string | null;
           created_at: string;
         };
         Insert: {
@@ -65,6 +67,7 @@ export type Database = {
           league: string;
           country?: string | null;
           is_national?: boolean;
+          logo_url?: string | null;
         };
         Update: never;
         Relationships: [];

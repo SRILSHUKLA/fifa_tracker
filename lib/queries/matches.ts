@@ -16,6 +16,7 @@ export type MatchTeam = {
   id: number;
   name: string;
   short_name: string | null;
+  logo_url: string | null;
 } | null;
 
 export type MatchWithPlayers = {
@@ -49,8 +50,8 @@ const MATCH_SELECT = `
   created_by,
   player_one:profiles!matches_player_one_id_fkey(id,username,display_name,avatar_url),
   player_two:profiles!matches_player_two_id_fkey(id,username,display_name,avatar_url),
-  team_one:teams!matches_player_one_team_id_fkey(id,name,short_name),
-  team_two:teams!matches_player_two_team_id_fkey(id,name,short_name)
+  team_one:teams!matches_player_one_team_id_fkey(id,name,short_name,logo_url),
+  team_two:teams!matches_player_two_team_id_fkey(id,name,short_name,logo_url)
 `;
 
 /**

@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronsUpDown, Shirt } from "lucide-react";
+import { Check, ChevronsUpDown } from "lucide-react";
 
+import { TeamBadge } from "@/components/team-badge";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -58,7 +59,7 @@ export function TeamCombobox({
           className="h-11 w-full justify-between px-3 font-normal"
         >
           <span className="flex min-w-0 items-center gap-2">
-            <Shirt className="size-4 shrink-0 text-muted-foreground" />
+            <TeamBadge team={selected} size="sm" />
             <span
               className={cn(
                 "truncate",
@@ -118,6 +119,7 @@ export function TeamCombobox({
                         team.id === value ? "opacity-100" : "opacity-0",
                       )}
                     />
+                    <TeamBadge team={team} size="sm" />
                     <span className="flex-1 truncate">{team.name}</span>
                     {team.short_name && (
                       <span className="text-xs text-muted-foreground">

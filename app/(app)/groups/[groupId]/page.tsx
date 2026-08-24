@@ -11,6 +11,7 @@ import { RemoveMemberButton } from "@/components/groups/remove-member-button";
 import { RenameGroupDialog } from "@/components/groups/rename-group-dialog";
 import { MatchCard } from "@/components/match/match-card";
 import { FormGuide, ResultBar, StatTile } from "@/components/stat-tile";
+import { TeamBadge } from "@/components/team-badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { decimal, signed } from "@/lib/format";
@@ -21,6 +22,7 @@ import {
   getGroupMembers,
 } from "@/lib/queries/groups";
 import { getGroupTeamStats, getRecentForm } from "@/lib/queries/stats";
+import { getTeams } from "@/lib/queries/teams";
 
 export async function generateMetadata({
   params,
@@ -50,18 +52,23 @@ export default async function GroupDetailPage({
   const group = await getGroup(supabase, groupId);
   if (!group) notFound();
 
-  const [members, leaderboard, matches, form, teamStats] = await Promise.all([
+  const [members, leaderboard, matches, form, teamStats, teams] = await Promise.all([
     getGroupMembers(supabase, groupId),
     getGroupLeaderboard(supabase, groupId),
     getMatches(supabase, { groupId, limit: 5 }),
     getRecentForm(supabase, user.id, groupId, 5),
     getGroupTeamStats(supabase, groupId),
+    getTeams(supabase),
   ]);
 
   const isOwner = group.owner_id === user.id;
   const myRow = leaderboard.find((row) => row.id === user.id) ?? null;
   const played = myRow?.played ?? 0;
   const topTeam = teamStats[0] ?? null;
+  // get_group_team_stats only returns team_id/team_name, not the logo — the
+  // full team list is small enough to already be in memory, so look it up
+  // rather than adding a join to that RPC.
+  const topTeamInfo = topTeam ? teams.find((t) => t.id === topTeam.team_id) ?? null : null;
 
   return (
     <div className="space-y-6">
@@ -170,8 +177,11 @@ export default async function GroupDetailPage({
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Your go-to team here
           </p>
-          <div className="mt-1.5 flex items-baseline justify-between">
-            <p className="font-semibold">{topTeam.team_name}</p>
+          <div className="mt-1.5 flex items-center justify-between">
+            <p className="flex items-center gap-2 font-semibold">
+              <TeamBadge team={topTeamInfo ?? { name: topTeam.team_name }} size="md" />
+              {topTeam.team_name}
+            </p>
             <p className="tnum text-sm text-muted-foreground">
               {topTeam.wins}W {topTeam.draws}D {topTeam.losses}L in{" "}
               {topTeam.played} {topTeam.played === 1 ? "match" : "matches"}

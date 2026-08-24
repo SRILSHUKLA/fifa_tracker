@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { PlayerAvatar } from "@/components/player-avatar";
+import { TeamBadge } from "@/components/team-badge";
 import { matchDate, displayName, fullDate } from "@/lib/format";
 import { fromPerspective, type MatchWithPlayers } from "@/lib/queries/matches";
 import { teamLabel } from "@/lib/queries/teams";
@@ -48,18 +49,20 @@ export function MatchCard({
 
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold leading-tight">{opponentName}</p>
-        <p
-          className="truncate text-xs text-muted-foreground"
+        <div
+          className="flex items-center gap-1 truncate text-xs text-muted-foreground"
           title={fullDate(match.played_at)}
         >
-          {matchDate(match.played_at)}
+          <span className="truncate">{matchDate(match.played_at)}</span>
           {(myTeam || theirTeam) && (
-            <>
-              {" · "}
-              {teamLabel(myTeam) ?? "?"} v {teamLabel(theirTeam) ?? "?"}
-            </>
+            <span className="flex shrink-0 items-center gap-1">
+              <span>·</span>
+              <TeamBadge team={myTeam} size="sm" className="size-4" />
+              <span>{teamLabel(myTeam) ?? "?"} v {teamLabel(theirTeam) ?? "?"}</span>
+              <TeamBadge team={theirTeam} size="sm" className="size-4" />
+            </span>
           )}
-        </p>
+        </div>
       </div>
 
       <p className={cn("tnum shrink-0 text-2xl font-bold", scoreTone)}>

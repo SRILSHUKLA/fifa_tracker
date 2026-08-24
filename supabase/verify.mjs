@@ -11,7 +11,12 @@ import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 
 const MIGRATIONS = new URL("./migrations/", import.meta.url);
-const MIGRATION_FILES = ["0001_init.sql", "0002_seed_teams.sql", "0003_groups.sql"];
+const MIGRATION_FILES = [
+  "0001_init.sql",
+  "0002_seed_teams.sql",
+  "0003_groups.sql",
+  "0004_team_logos.sql",
+];
 
 const db = new PGlite();
 
@@ -67,6 +72,15 @@ const leagues = await db.query(
   `select league, count(*)::int as n from public.teams group by league order by league`,
 );
 console.log("           " + leagues.rows.map((r) => `${r.league}=${r.n}`).join(", "));
+
+// 0004_team_logos.sql sets logo_url for most (not necessarily all) teams —
+// see scripts/fetch-team-logos.mjs for the handful that don't resolve
+// confidently against TheSportsDB. The exact count moves whenever that
+// script is re-run, so this is a floor, not an exact match.
+const logos = await db.query(
+  `select count(*)::int as n from public.teams where logo_url is not null`,
+);
+check("most teams have a logo_url", logos.rows[0].n >= 150, true);
 
 // --- Signup trigger -------------------------------------------------------
 const mk = async (email, username) => {
