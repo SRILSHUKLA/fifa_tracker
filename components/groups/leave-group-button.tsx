@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { UserMinus } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 
-import { unfriend } from "@/app/(app)/friends/actions";
+import { leaveGroupAction } from "@/app/(app)/groups/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,12 +18,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-export function UnfriendButton({
-  friendId,
-  username,
+/**
+ * Leaves a group. Past matches are deliberately kept: deleting them would
+ * silently rewrite this group's leaderboard for everyone else still in it.
+ * The owner cannot leave (the server rejects it), so this is only rendered
+ * for non-owner members.
+ */
+export function LeaveGroupButton({
+  groupId,
+  groupName,
 }: {
-  friendId: string;
-  username: string;
+  groupId: string;
+  groupName: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -31,7 +37,7 @@ export function UnfriendButton({
 
   function confirm() {
     startTransition(async () => {
-      const result = await unfriend(friendId);
+      const result = await leaveGroupAction(groupId);
 
       if (!result.ok) {
         toast.error(result.error);
@@ -39,31 +45,28 @@ export function UnfriendButton({
       }
 
       setOpen(false);
-      toast.success(`Removed @${username}.`);
-      router.push("/friends");
+      toast.success(`Left ${groupName}.`);
+      router.push("/groups");
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Remove ${username}`}
-          className="text-muted-foreground"
-        >
-          <UserMinus className="size-4" />
+        <Button variant="ghost" size="sm" className="text-muted-foreground">
+          <LogOut className="size-4" />
+          Leave group
         </Button>
       </DialogTrigger>
 
       <DialogContent className="max-w-xs rounded-xl">
         <DialogHeader>
-          <DialogTitle>Remove @{username}?</DialogTitle>
+          <DialogTitle>Leave {groupName}?</DialogTitle>
           <DialogDescription>
-            You will not be able to log matches against each other until one of
-            you sends a new request. Matches you have already played stay on the
-            leaderboard.
+            You will no longer see this group&apos;s matches or leaderboard,
+            and you cannot log matches against its members until you rejoin.
+            Matches already played stay on the group&apos;s leaderboard for
+            everyone else.
           </DialogDescription>
         </DialogHeader>
 
@@ -79,7 +82,7 @@ export function UnfriendButton({
             onClick={confirm}
             className="flex-1"
           >
-            Remove
+            Leave
           </Button>
         </DialogFooter>
       </DialogContent>

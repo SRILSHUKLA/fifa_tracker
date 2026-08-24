@@ -1,51 +1,24 @@
 import type { Client } from "./matches";
-import type { H2HStats, LeaderboardRow, Profile } from "@/types/database.types";
+import type {
+  GroupTeamStat,
+  H2HStats,
+  H2HTeamStat,
+  Profile,
+} from "@/types/database.types";
 
 /**
- * Global standings. The view computes points as 3W + D; ordering happens here
- * because PostgREST can only sort by columns, and the tiebreak chain is
- * points, then goal difference, then goals scored — the usual football table.
- */
-export async function getLeaderboard(
-  supabase: Client,
-): Promise<LeaderboardRow[]> {
-  const { data, error } = await supabase
-    .from("leaderboard")
-    .select("*")
-    .order("points", { ascending: false })
-    .order("goal_difference", { ascending: false })
-    .order("goals_for", { ascending: false })
-    .order("username", { ascending: true });
-
-  if (error) throw error;
-  return data ?? [];
-}
-
-/** One player's row from the leaderboard view, used for the dashboard tiles. */
-export async function getPlayerStats(
-  supabase: Client,
-  playerId: string,
-): Promise<LeaderboardRow | null> {
-  const { data, error } = await supabase
-    .from("leaderboard")
-    .select("*")
-    .eq("id", playerId)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data;
-}
-
-/**
- * Head-to-head totals between the current user and one opponent.
- * The RPC always returns exactly one row, zero-filled when they have never
- * played, so the H2H page never has to special-case an empty result.
+ * Head-to-head totals between the current user and one opponent, scoped to a
+ * single group. The RPC always returns exactly one row, zero-filled when
+ * they have never played each other in this group, so the H2H page never
+ * has to special-case an empty result.
  */
 export async function getH2HStats(
   supabase: Client,
+  groupId: string,
   opponentId: string,
 ): Promise<H2HStats> {
   const { data, error } = await supabase.rpc("get_h2h_stats", {
+    p_group_id: groupId,
     p_opponent: opponentId,
   });
 
@@ -65,6 +38,38 @@ export async function getH2HStats(
       last_played: null,
     }
   );
+}
+
+/**
+ * Which team(s) the current user picks against one opponent within a group,
+ * and the record with each — the "team-based head-to-head" breakdown.
+ */
+export async function getH2HTeamStats(
+  supabase: Client,
+  groupId: string,
+  opponentId: string,
+): Promise<H2HTeamStat[]> {
+  const { data, error } = await supabase.rpc("get_h2h_team_stats", {
+    p_group_id: groupId,
+    p_opponent: opponentId,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * The current user's team record across the whole group, not tied to any one
+ * opponent — "which team do I actually play well" within this group.
+ */
+export async function getGroupTeamStats(
+  supabase: Client,
+  groupId: string,
+): Promise<GroupTeamStat[]> {
+  const { data, error } = await supabase.rpc("get_group_team_stats", {
+    p_group_id: groupId,
+  });
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function getProfileByUsername(
@@ -96,18 +101,21 @@ export async function getProfile(
 }
 
 /**
- * Win / draw / loss over the player's most recent matches, newest first.
- * Rendered as the little form guide on the dashboard.
+ * Win / draw / loss over the player's most recent matches within one group,
+ * newest first. Rendered as the little form guide on the dashboard and the
+ * group/member pages.
  */
 export async function getRecentForm(
   supabase: Client,
   playerId: string,
+  groupId: string,
   limit = 5,
 ) {
   const { data, error } = await supabase
     .from("player_match_results")
     .select("result, played_at")
     .eq("player_id", playerId)
+    .eq("group_id", groupId)
     .order("played_at", { ascending: false })
     .limit(limit);
 

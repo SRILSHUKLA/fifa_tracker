@@ -17,7 +17,7 @@ export default function SignupPage() {
       <CardHeader>
         <CardTitle className="text-xl">Create your account</CardTitle>
         <CardDescription>
-          Add your friends, then start logging matches.
+          Join or create a group, then start logging matches.
         </CardDescription>
       </CardHeader>
       <CardContent>

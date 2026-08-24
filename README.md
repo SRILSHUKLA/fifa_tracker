@@ -10,17 +10,23 @@ tiers.
 
 There is no application server. The browser talks to Postgres through PostgREST
 using the signed-in user's JWT, and the RLS policies in
-`supabase/migrations/0001_init.sql` are the authorization layer.
+`supabase/migrations/` are the authorization layer.
 
 ## Features
 
 - Email + password auth, one-step signup with a username
-- Friend requests: search by username prefix or exact email, accept/decline
+- **Groups**: create a group and share its invite code or link so up to 11
+  people can join directly — no adding people one at a time. Two people only
+  see each other's stats, and can only log a match against each other, if
+  they share a group
 - Match logging with tap-friendly score steppers and a searchable team picker
   (~160 clubs and national sides across the top five leagues)
-- Global leaderboard — 3 points a win, 1 a draw, tiebreak on goal difference
-- Head-to-head dashboard: record, aggregate goals, averages, recent meetings
-- Scrollable match history
+- Group leaderboard — 3 points a win, 1 a draw, tiebreak on goal difference,
+  with win rate alongside it
+- Head-to-head dashboard per group: record, aggregate goals, averages, recent
+  meetings, and a team-based breakdown of which team you actually do well
+  with against that opponent
+- Scrollable match history, scoped to the group you're currently viewing
 
 ## Getting started
 
@@ -37,7 +43,9 @@ npm install
 1. Create a project at [supabase.com](https://supabase.com) and pick a region
    near you.
 2. In the SQL editor, run `supabase/migrations/0001_init.sql`, then
-   `supabase/migrations/0002_seed_teams.sql`. Both are safe to re-run.
+   `supabase/migrations/0002_seed_teams.sql`, then
+   `supabase/migrations/0003_groups.sql`, in that order. All three are safe
+   to re-run.
 3. Under **Authentication → Sign In / Providers → Email**, turn off
    *Confirm email*. For a friends-only app this makes signup one step on a
    phone; leave it on if you would rather verify addresses.
@@ -71,11 +79,13 @@ the stats layer and every RLS policy:
 npm run verify:db
 ```
 
-It checks, among other things, that `winner_id` follows the score, that
-leaderboard points equal `3W + D`, that head-to-head totals mirror correctly
-between the two players, and that you cannot log a match against a non-friend,
-between two other people, or in someone else's name. Run it after any change to
-`supabase/migrations/`.
+It checks, among other things, that `winner_id` follows the score, that a
+group's leaderboard points equal `3W + D`, that head-to-head totals mirror
+correctly between two players within a group, that the same pair of people
+sharing two different groups never has one group's stats bleed into the
+other's, and that you cannot log a match against someone outside the group,
+between two other people, or in someone else's name. Run it after any change
+to `supabase/migrations/`.
 
 ### Regenerating database types
 
@@ -103,10 +113,16 @@ dashboard to wake up.
 | Table | Purpose |
 | --- | --- |
 | `profiles` | Public identity, 1:1 with `auth.users`. Email never leaves `auth`. |
-| `friendships` | One row per pair in either direction, `pending` / `accepted`. |
+| `groups` | One row per group. Holds the invite code members join with. |
+| `group_members` | One row per (group, user), with a `role` of `owner` or `member`. |
 | `teams` | Seeded reference data. |
-| `matches` | One row per match. `winner_id` is a generated column, so the recorded result can never contradict the score. |
+| `matches` | One row per match, tied to exactly one `group_id`. `winner_id` is a generated column, so the recorded result can never contradict the score. |
 
 Stats are computed in SQL, not in the browser. `player_match_results` flattens
-each match into two player-perspective rows, and the `leaderboard` view plus the
-`get_h2h_stats` / `get_friends` functions aggregate over it.
+each match into two player-perspective rows (carrying `group_id` along with
+it), and the `get_group_leaderboard` / `get_h2h_stats` / `get_h2h_team_stats`
+functions aggregate over it, filtered to one group at a time. There is no
+global, cross-group leaderboard: `groups` and `matches` are only readable by
+people who share the relevant group (see the RLS policies in
+`supabase/migrations/0003_groups.sql`), so nothing about one group is visible
+from another, even when the same two people belong to both.

@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronRight, Swords } from "lucide-react";
+import { ChevronRight, Swords, UsersRound } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { MatchCard } from "@/components/match/match-card";
 import { FormGuide, ResultBar, StatTile } from "@/components/stat-tile";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { decimal, displayName, signed } from "@/lib/format";
+import { getActiveGroup } from "@/lib/groups/active-group";
+import { getGroupLeaderboard } from "@/lib/queries/groups";
 import { getMatches } from "@/lib/queries/matches";
-import { getPlayerStats, getProfile, getRecentForm } from "@/lib/queries/stats";
+import { getProfile, getRecentForm } from "@/lib/queries/stats";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -19,22 +22,51 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  const [me, stats, form, matches] = await Promise.all([
+  const [me, { active }] = await Promise.all([
     getProfile(supabase, user.id),
-    getPlayerStats(supabase, user.id),
-    getRecentForm(supabase, user.id, 5),
-    getMatches(supabase, { playerId: user.id, limit: 5 }),
+    getActiveGroup(supabase),
   ]);
 
   if (!me) redirect("/auth/signout");
 
+  if (!active) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <p className="text-sm text-muted-foreground">Welcome</p>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {displayName(me)}
+          </h1>
+        </div>
+
+        <EmptyState
+          icon={UsersRound}
+          title="Get your group set up"
+          description="Create a group and share the invite code with your friends, or join a group someone shared with you, to start tracking matches."
+          action={{ href: "/groups", label: "Create or join a group" }}
+        />
+      </div>
+    );
+  }
+
+  const groupId = active.group.id;
+
+  const [leaderboard, form, matches] = await Promise.all([
+    getGroupLeaderboard(supabase, groupId),
+    getRecentForm(supabase, user.id, groupId, 5),
+    getMatches(supabase, { groupId, playerId: user.id, limit: 5 }),
+  ]);
+
+  const stats = leaderboard.find((row) => row.id === user.id) ?? null;
   const played = stats?.played ?? 0;
   const goalsFor = stats?.goals_for ?? 0;
 
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm text-muted-foreground">Welcome back</p>
+        <p className="text-sm text-muted-foreground">
+          Welcome back · {active.group.name}
+        </p>
         <h1 className="text-2xl font-bold tracking-tight">
           {displayName(me)}
         </h1>
@@ -134,7 +166,7 @@ export default async function DashboardPage() {
             icon={Swords}
             title="No matches yet"
             description="Log your first result and your stats will start filling in."
-            action={{ href: "/match/new", label: "Log a match" }}
+            action={{ href: `/match/new?group=${groupId}`, label: "Log a match" }}
           />
         ) : (
           <div className="space-y-2">
@@ -144,6 +176,15 @@ export default async function DashboardPage() {
           </div>
         )}
       </section>
+
+      <div className="pt-1 text-center">
+        <Button asChild variant="ghost" size="sm">
+          <Link href={`/groups/${groupId}`}>
+            View {active.group.name}
+            <ChevronRight className="size-4" />
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }

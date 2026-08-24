@@ -38,12 +38,12 @@ export async function logMatch(input: NewMatchInput): Promise<LogMatchResult> {
   } catch (error) {
     const code = (error as { code?: string })?.code;
 
-    // 42501 is an RLS denial. The only way to trip it here is logging against
-    // someone who is not (or is no longer) a friend.
+    // 42501 is an RLS denial. The only way to trip it here is logging
+    // against someone who does not (or no longer does) share this group.
     if (code === "42501") {
       return {
         ok: false,
-        error: "You can only log matches against people on your friends list.",
+        error: "You can only log matches against people in the same group.",
       };
     }
 

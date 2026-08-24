@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Trophy } from "lucide-react";
+import { Trophy, UsersRound } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { createClient } from "@/lib/supabase/server";
-import { displayName, signed } from "@/lib/format";
-import { getLeaderboard } from "@/lib/queries/stats";
+import { decimal, displayName, signed } from "@/lib/format";
+import { getActiveGroup } from "@/lib/groups/active-group";
+import { getGroupLeaderboard } from "@/lib/queries/groups";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Leaderboard · FIFA Tracker" };
@@ -21,9 +22,27 @@ export default async function LeaderboardPage() {
 
   if (!user) redirect("/login");
 
-  const rows = await getLeaderboard(supabase);
+  const { active } = await getActiveGroup(supabase);
 
-  // Everyone with a profile appears in the view. Players who have not played
+  if (!active) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Leaderboard</h1>
+        </div>
+        <EmptyState
+          icon={UsersRound}
+          title="No group yet"
+          description="The table is scoped to a group. Create or join one to see who's winning."
+          action={{ href: "/groups", label: "Find a group" }}
+        />
+      </div>
+    );
+  }
+
+  const rows = await getGroupLeaderboard(supabase, active.group.id);
+
+  // Every member appears in the RPC's result. Players who have not played
   // yet would all sit on zero points, so they are listed separately below
   // rather than padding out the table.
   const ranked = rows.filter((row) => row.played > 0);
@@ -34,7 +53,8 @@ export default async function LeaderboardPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Leaderboard</h1>
         <p className="text-sm text-muted-foreground">
-          3 points a win, 1 a draw. Ties split on goal difference.
+          {active.group.name} · 3 points a win, 1 a draw. Ties split on goal
+          difference.
         </p>
       </div>
 
@@ -43,11 +63,14 @@ export default async function LeaderboardPage() {
           icon={Trophy}
           title="Nothing to rank yet"
           description="The table fills up as soon as the first match is logged."
-          action={{ href: "/match/new", label: "Log a match" }}
+          action={{
+            href: `/match/new?group=${active.group.id}`,
+            label: "Log a match",
+          }}
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[420px] text-sm">
             <thead>
               <tr className="border-b border-border bg-card text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th scope="col" className="py-2 pl-3 pr-1 text-left font-medium">
@@ -70,6 +93,9 @@ export default async function LeaderboardPage() {
                 </th>
                 <th scope="col" className="px-1.5 py-2 text-right font-medium">
                   GD
+                </th>
+                <th scope="col" className="px-1.5 py-2 text-right font-medium">
+                  Win%
                 </th>
                 <th scope="col" className="py-2 pl-1.5 pr-3 text-right font-medium">
                   Pts
@@ -100,7 +126,11 @@ export default async function LeaderboardPage() {
 
                     <td className="py-2.5 pr-2">
                       <Link
-                        href={isMe ? "/" : `/friends/${row.username}`}
+                        href={
+                          isMe
+                            ? "/"
+                            : `/groups/${active.group.id}/members/${row.username}`
+                        }
                         className="flex min-w-0 items-center gap-2"
                       >
                         <PlayerAvatar person={row} size="sm" highlight={isMe} />
@@ -125,6 +155,9 @@ export default async function LeaderboardPage() {
                     >
                       {signed(row.goal_difference)}
                     </td>
+                    <td className="tnum px-1.5 py-2.5 text-right text-muted-foreground">
+                      {row.win_pct != null ? `${decimal(row.win_pct)}%` : "—"}
+                    </td>
                     <td className="tnum py-2.5 pl-1.5 pr-3 text-right font-bold">
                       {row.points}
                     </td>
@@ -145,7 +178,11 @@ export default async function LeaderboardPage() {
             {unranked.map((row) => (
               <Link
                 key={row.id}
-                href={row.id === user.id ? "/" : `/friends/${row.username}`}
+                href={
+                  row.id === user.id
+                    ? "/"
+                    : `/groups/${active.group.id}/members/${row.username}`
+                }
                 className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-3 text-sm"
               >
                 <PlayerAvatar

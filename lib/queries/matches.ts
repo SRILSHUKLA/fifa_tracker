@@ -20,6 +20,7 @@ export type MatchTeam = {
 
 export type MatchWithPlayers = {
   id: string;
+  group_id: string;
   played_at: string;
   player_one_score: number;
   player_two_score: number;
@@ -39,6 +40,7 @@ export type MatchWithPlayers = {
  */
 const MATCH_SELECT = `
   id,
+  group_id,
   played_at,
   player_one_score,
   player_two_score,
@@ -52,25 +54,35 @@ const MATCH_SELECT = `
 `;
 
 /**
- * Matches involving `playerId`, newest first. Omit `playerId` for the global
- * feed. Pass `opponentId` to narrow to a single head-to-head.
+ * Matches involving `playerId`, newest first. Omit `playerId` for every
+ * match the caller can see (RLS already limits that to shared-group
+ * matches). Pass `opponentId` to narrow to a single head-to-head, and
+ * `groupId` to scope to one group — every caller that isn't reading a
+ * single already-known match should pass `groupId`, since a pair of people
+ * sharing more than one group would otherwise blend two unrelated histories
+ * into one feed.
  */
 export async function getMatches(
   supabase: Client,
   opts: {
     playerId?: string;
     opponentId?: string;
+    groupId?: string;
     limit?: number;
     offset?: number;
   } = {},
 ) {
-  const { playerId, opponentId, limit = 20, offset = 0 } = opts;
+  const { playerId, opponentId, groupId, limit = 20, offset = 0 } = opts;
 
   let query = supabase
     .from("matches")
     .select(MATCH_SELECT)
     .order("played_at", { ascending: false })
     .range(offset, offset + limit - 1);
+
+  if (groupId) {
+    query = query.eq("group_id", groupId);
+  }
 
   if (playerId && opponentId) {
     // Either seating arrangement counts as the same fixture.
@@ -112,6 +124,7 @@ export function fromPerspective(match: MatchWithPlayers, viewerId: string) {
 }
 
 export type NewMatchInput = {
+  groupId: string;
   opponentId: string;
   myScore: number;
   opponentScore: number;
@@ -125,6 +138,9 @@ export type NewMatchInput = {
  * Logs a match. The current user is always stored as player_one — see the
  * convention note in 0001_init.sql. `winner_id` is deliberately not sent: it
  * is a generated column, so the database decides the result from the score.
+ * `groupId` is required and, once inserted, effectively permanent — there is
+ * no update path for it, since re-attributing a match to a different group
+ * would silently rewrite two other people's history.
  */
 export async function createMatch(
   supabase: Client,
@@ -132,6 +148,7 @@ export async function createMatch(
   input: NewMatchInput,
 ) {
   const { error } = await supabase.from("matches").insert({
+    group_id: input.groupId,
     player_one_id: userId,
     player_two_id: input.opponentId,
     player_one_score: input.myScore,

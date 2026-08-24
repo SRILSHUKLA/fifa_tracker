@@ -74,7 +74,7 @@ export function MatchCard({
 
   return (
     <Link
-      href={`/friends/${them.username}`}
+      href={`/groups/${match.group_id}/members/${them.username}`}
       className="block transition-opacity active:opacity-70"
       aria-label={`${opponentName}: ${myScore}–${theirScore}, ${result}`}
     >

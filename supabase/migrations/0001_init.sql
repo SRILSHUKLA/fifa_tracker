@@ -180,7 +180,15 @@ create index if not exists matches_played_at_idx on public.matches (played_at de
 --
 -- security_invoker = on is essential. Without it a view runs with its OWNER's
 -- privileges and silently bypasses RLS on public.matches.
-create or replace view public.player_match_results
+--
+-- DROP + CREATE rather than CREATE OR REPLACE: a later migration
+-- (0003_groups.sql) adds a column to this view's SELECT list, and Postgres
+-- refuses a CREATE OR REPLACE VIEW that changes anything but appending
+-- columns at the end. CASCADE takes any dependent view (leaderboard, defined
+-- below) down with it; it is recreated a few statements later in this same
+-- file, so this is a no-op the moment both statements have run once.
+drop view if exists public.player_match_results cascade;
+create view public.player_match_results
 with (security_invoker = on) as
   select
     m.id                 as match_id,

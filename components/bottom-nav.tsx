@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, Home, Plus, Trophy, Users } from "lucide-react";
+import { History, Home, Plus, Trophy, UsersRound } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/leaderboard", label: "Table", icon: Trophy },
-  { href: "/friends", label: "Friends", icon: Users },
+  { href: "/groups", label: "Groups", icon: UsersRound },
   { href: "/history", label: "History", icon: History },
 ] as const;
 
@@ -19,7 +19,7 @@ const TABS = [
  * Everything sits at the bottom of the screen because that is where a thumb
  * is when you are holding a phone in one hand and a controller in the other.
  */
-export function BottomNav({ pendingRequests = 0 }: { pendingRequests?: number }) {
+export function BottomNav() {
   const pathname = usePathname();
 
   const isActive = (href: string) =>
@@ -48,12 +48,7 @@ export function BottomNav({ pendingRequests = 0 }: { pendingRequests?: number })
         </div>
 
         {TABS.slice(2).map((tab) => (
-          <NavTab
-            key={tab.href}
-            {...tab}
-            active={isActive(tab.href)}
-            badge={tab.href === "/friends" ? pendingRequests : 0}
-          />
+          <NavTab key={tab.href} {...tab} active={isActive(tab.href)} />
         ))}
       </div>
     </nav>
@@ -65,13 +60,11 @@ function NavTab({
   label,
   icon: Icon,
   active,
-  badge = 0,
 }: {
   href: string;
   label: string;
   icon: typeof Home;
   active: boolean;
-  badge?: number;
 }) {
   return (
     <Link
@@ -82,14 +75,7 @@ function NavTab({
         active ? "text-primary" : "text-muted-foreground hover:text-foreground",
       )}
     >
-      <span className="relative">
-        <Icon className="size-5" />
-        {badge > 0 && (
-          <span className="absolute -right-2 -top-1.5 grid min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground">
-            {badge > 9 ? "9+" : badge}
-          </span>
-        )}
-      </span>
+      <Icon className="size-5" />
       {label}
     </Link>
   );

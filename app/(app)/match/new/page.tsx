@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { UserPlus } from "lucide-react";
+import { UsersRound } from "lucide-react";
 
-import { AddMatchForm } from "@/components/match/add-match-form";
+import { AddMatchForm, type MatchFormGroup } from "@/components/match/add-match-form";
 import { EmptyState } from "@/components/empty-state";
 import { createClient } from "@/lib/supabase/server";
-import { getFriends } from "@/lib/queries/friends";
+import { getGroupMembers, getMyGroups } from "@/lib/queries/groups";
 import { getProfile } from "@/lib/queries/stats";
 import { getTeams } from "@/lib/queries/teams";
 
@@ -22,16 +22,28 @@ export default async function NewMatchPage({
 
   if (!user) redirect("/login");
 
-  // `?opponent=<id>` lets the H2H page deep-link straight into a rematch.
-  const { opponent } = await searchParams;
+  // `?group=<id>` and `?opponent=<id>` let a group or H2H page deep-link
+  // straight into a rematch.
+  const { group: groupParam, opponent } = await searchParams;
 
-  const [me, friends, teams] = await Promise.all([
+  const [me, myGroups, teams] = await Promise.all([
     getProfile(supabase, user.id),
-    getFriends(supabase),
+    getMyGroups(supabase),
     getTeams(supabase),
   ]);
 
   if (!me) redirect("/auth/signout");
+
+  // Each group's roster is small (11 players max), so loading every group's
+  // members up front avoids a round trip when the user switches groups
+  // inside the form.
+  const groups: MatchFormGroup[] = await Promise.all(
+    myGroups.map(async ({ group }) => ({
+      id: group.id,
+      name: group.name,
+      members: await getGroupMembers(supabase, group.id),
+    })),
+  );
 
   return (
     <div className="space-y-5">
@@ -42,18 +54,21 @@ export default async function NewMatchPage({
         </p>
       </div>
 
-      {friends.length === 0 ? (
+      {groups.length === 0 ? (
         <EmptyState
-          icon={UserPlus}
-          title="No friends yet"
-          description="Matches are logged against people on your friends list. Add someone first."
-          action={{ href: "/friends", label: "Find friends" }}
+          icon={UsersRound}
+          title="No groups yet"
+          description="Matches are logged within a group. Create or join one first."
+          action={{ href: "/groups", label: "Find a group" }}
         />
       ) : (
         <AddMatchForm
           me={me}
-          friends={friends}
+          groups={groups}
           teams={teams}
+          defaultGroupId={
+            typeof groupParam === "string" ? groupParam : undefined
+          }
           defaultOpponentId={
             typeof opponent === "string" ? opponent : undefined
           }

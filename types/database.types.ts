@@ -1,5 +1,6 @@
 /**
- * Types for the FIFA Score Tracker schema (supabase/migrations/0001_init.sql).
+ * Types for the FIFA Score Tracker schema (supabase/migrations/0001_init.sql,
+ * 0003_groups.sql).
  *
  * Hand-written to match the shape `supabase gen types typescript` produces, so
  * once you have a project ref you can regenerate over the top of this file:
@@ -18,8 +19,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type FriendshipStatus = "pending" | "accepted" | "blocked";
 export type MatchResult = "win" | "loss" | "draw";
+export type GroupRole = "owner" | "member";
 
 export type Database = {
   public: {
@@ -43,30 +44,6 @@ export type Database = {
           username?: string;
           display_name?: string | null;
           avatar_url?: string | null;
-        };
-        Relationships: [];
-      };
-
-      friendships: {
-        Row: {
-          id: string;
-          requester_id: string;
-          addressee_id: string;
-          status: FriendshipStatus;
-          created_at: string;
-          responded_at: string | null;
-        };
-        Insert: {
-          id?: string;
-          requester_id: string;
-          addressee_id: string;
-          status?: FriendshipStatus;
-          created_at?: string;
-          responded_at?: string | null;
-        };
-        Update: {
-          status?: FriendshipStatus;
-          responded_at?: string | null;
         };
         Relationships: [];
       };
@@ -96,6 +73,7 @@ export type Database = {
       matches: {
         Row: {
           id: string;
+          group_id: string;
           player_one_id: string;
           player_two_id: string;
           player_one_score: number;
@@ -112,6 +90,7 @@ export type Database = {
         /** winner_id is GENERATED ALWAYS, so it is never writable. */
         Insert: {
           id?: string;
+          group_id: string;
           player_one_id: string;
           player_two_id: string;
           player_one_score: number;
@@ -132,12 +111,46 @@ export type Database = {
         };
         Relationships: [];
       };
+
+      groups: {
+        Row: {
+          id: string;
+          name: string;
+          owner_id: string;
+          invite_code: string;
+          created_at: string;
+        };
+        /** No INSERT policy: rows are created only by create_group(). */
+        Insert: never;
+        /**
+         * Only `name` is grantable to clients — invite_code can only change
+         * via the regenerate_invite_code() RPC.
+         */
+        Update: {
+          name?: string;
+        };
+        Relationships: [];
+      };
+
+      group_members: {
+        Row: {
+          group_id: string;
+          user_id: string;
+          role: GroupRole;
+          joined_at: string;
+        };
+        /** No INSERT policy: rows are created only by create_group()/join_group(). */
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
 
     Views: {
       player_match_results: {
         Row: {
           match_id: string;
+          group_id: string;
           played_at: string;
           player_id: string;
           opponent_id: string;
@@ -150,9 +163,58 @@ export type Database = {
         };
         Relationships: [];
       };
+    };
 
-      leaderboard: {
-        Row: {
+    Functions: {
+      create_group: {
+        Args: { p_name: string };
+        Returns: Database["public"]["Tables"]["groups"]["Row"];
+      };
+
+      join_group: {
+        Args: { p_invite_code: string };
+        Returns: Database["public"]["Tables"]["groups"]["Row"];
+      };
+
+      regenerate_invite_code: {
+        Args: { p_group_id: string };
+        Returns: string;
+      };
+
+      is_group_owner: {
+        Args: { p_group_id: string; p_user: string };
+        Returns: boolean;
+      };
+
+      is_group_member: {
+        Args: { p_group_id: string; p_user: string };
+        Returns: boolean;
+      };
+
+      are_group_members: {
+        Args: { p_group_id: string; a: string; b: string };
+        Returns: boolean;
+      };
+
+      get_group_members: {
+        Args: { p_group_id: string };
+        Returns: {
+          id: string;
+          username: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          role: GroupRole;
+          joined_at: string;
+          played: number;
+          wins: number;
+          draws: number;
+          losses: number;
+        }[];
+      };
+
+      get_group_leaderboard: {
+        Args: { p_group_id: string };
+        Returns: {
           id: string;
           username: string;
           display_name: string | null;
@@ -167,14 +229,11 @@ export type Database = {
           points: number;
           /** null until the player has played at least one match. */
           win_pct: number | null;
-        };
-        Relationships: [];
+        }[];
       };
-    };
 
-    Functions: {
       get_h2h_stats: {
-        Args: { p_opponent: string };
+        Args: { p_group_id: string; p_opponent: string };
         Returns: {
           played: number;
           wins: number;
@@ -189,36 +248,32 @@ export type Database = {
         }[];
       };
 
-      get_friends: {
-        Args: Record<string, never>;
+      get_h2h_team_stats: {
+        Args: { p_group_id: string; p_opponent: string };
         Returns: {
-          id: string;
-          username: string;
-          display_name: string | null;
-          avatar_url: string | null;
-          friends_since: string;
+          team_id: number;
+          team_name: string;
           played: number;
           wins: number;
           draws: number;
           losses: number;
+          goals_for: number;
+          goals_against: number;
         }[];
       };
 
-      search_users: {
-        Args: { q: string };
+      get_group_team_stats: {
+        Args: { p_group_id: string };
         Returns: {
-          id: string;
-          username: string;
-          display_name: string | null;
-          avatar_url: string | null;
-          friendship_status: FriendshipStatus | "none";
-          is_requester: boolean;
+          team_id: number;
+          team_name: string;
+          played: number;
+          wins: number;
+          draws: number;
+          losses: number;
+          goals_for: number;
+          goals_against: number;
         }[];
-      };
-
-      are_friends: {
-        Args: { a: string; b: string };
-        Returns: boolean;
       };
 
       is_username_available: {
@@ -227,9 +282,7 @@ export type Database = {
       };
     };
 
-    Enums: {
-      friendship_status: FriendshipStatus;
-    };
+    Enums: Record<string, never>;
 
     CompositeTypes: Record<string, never>;
   };
@@ -242,12 +295,18 @@ export type Database = {
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type Team = Database["public"]["Tables"]["teams"]["Row"];
 export type Match = Database["public"]["Tables"]["matches"]["Row"];
-export type Friendship = Database["public"]["Tables"]["friendships"]["Row"];
+export type Group = Database["public"]["Tables"]["groups"]["Row"];
+export type GroupMember = Database["public"]["Tables"]["group_members"]["Row"];
 
-export type LeaderboardRow = Database["public"]["Views"]["leaderboard"]["Row"];
 export type PlayerMatchResult =
   Database["public"]["Views"]["player_match_results"]["Row"];
 
+export type GroupMemberSummary =
+  Database["public"]["Functions"]["get_group_members"]["Returns"][number];
+export type GroupLeaderboardRow =
+  Database["public"]["Functions"]["get_group_leaderboard"]["Returns"][number];
 export type H2HStats = Database["public"]["Functions"]["get_h2h_stats"]["Returns"][number];
-export type FriendSummary = Database["public"]["Functions"]["get_friends"]["Returns"][number];
-export type UserSearchResult = Database["public"]["Functions"]["search_users"]["Returns"][number];
+export type H2HTeamStat =
+  Database["public"]["Functions"]["get_h2h_team_stats"]["Returns"][number];
+export type GroupTeamStat =
+  Database["public"]["Functions"]["get_group_team_stats"]["Returns"][number];

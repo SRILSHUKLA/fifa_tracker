@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 
 import { AppHeader } from "@/components/app-header";
 import { BottomNav } from "@/components/bottom-nav";
+import { GroupSwitcher } from "@/components/groups/group-switcher";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveGroup } from "@/lib/groups/active-group";
 
 /**
  * Shell for every signed-in screen.
@@ -20,13 +22,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { count: pendingRequests }] = await Promise.all([
+  const [{ data: profile }, { groups, active }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
-    supabase
-      .from("friendships")
-      .select("id", { count: "exact", head: true })
-      .eq("addressee_id", user.id)
-      .eq("status", "pending"),
+    getActiveGroup(supabase),
   ]);
 
   // A signed-in user with no profile row means the handle_new_user trigger
@@ -37,12 +35,20 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     <div className="flex min-h-dvh flex-col">
       <AppHeader profile={profile} />
 
+      {/* Only worth showing once there is something to switch between —
+          with 0 or 1 groups every page already knows what to render. */}
+      {groups.length > 1 && active && (
+        <div className="mx-auto w-full max-w-lg px-4 pt-3">
+          <GroupSwitcher groups={groups} activeGroupId={active.group.id} />
+        </div>
+      )}
+
       {/* pb-28 clears the fixed bottom nav and its raised centre button. */}
       <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-28 pt-4">
         {children}
       </main>
 
-      <BottomNav pendingRequests={pendingRequests ?? 0} />
+      <BottomNav />
     </div>
   );
 }

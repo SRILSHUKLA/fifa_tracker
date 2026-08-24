@@ -20,26 +20,27 @@ import {
 } from "@/components/ui/popover";
 import { displayName } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { FriendSummary } from "@/types/database.types";
+import type { GroupMemberSummary } from "@/types/database.types";
 
 /**
- * Opponent selector, limited to accepted friends — which mirrors the
- * are_friends() check the matches INSERT policy enforces in the database.
+ * Opponent selector, limited to the current group's members — which mirrors
+ * the are_group_members() check the matches INSERT policy enforces in the
+ * database.
  */
 export function OpponentPicker({
-  friends,
+  members,
   value,
   onChange,
 }: {
-  friends: FriendSummary[];
+  members: GroupMemberSummary[];
   value: string | null;
-  onChange: (friendId: string) => void;
+  onChange: (memberId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
   const selected = useMemo(
-    () => friends.find((friend) => friend.id === value) ?? null,
-    [friends, value],
+    () => members.find((member) => member.id === value) ?? null,
+    [members, value],
   );
 
   return (
@@ -76,16 +77,16 @@ export function OpponentPicker({
         align="start"
       >
         <Command>
-          <CommandInput placeholder="Search friends..." className="h-11" />
+          <CommandInput placeholder="Search group..." className="h-11" />
           <CommandList className="max-h-72">
-            <CommandEmpty>No friend found.</CommandEmpty>
+            <CommandEmpty>No one found.</CommandEmpty>
             <CommandGroup>
-              {friends.map((friend) => (
+              {members.map((member) => (
                 <CommandItem
-                  key={friend.id}
-                  value={`${friend.username} ${friend.display_name ?? ""}`}
+                  key={member.id}
+                  value={`${member.username} ${member.display_name ?? ""}`}
                   onSelect={() => {
-                    onChange(friend.id);
+                    onChange(member.id);
                     setOpen(false);
                   }}
                   className="gap-2.5"
@@ -93,21 +94,21 @@ export function OpponentPicker({
                   <Check
                     className={cn(
                       "size-4",
-                      friend.id === value ? "opacity-100" : "opacity-0",
+                      member.id === value ? "opacity-100" : "opacity-0",
                     )}
                   />
-                  <PlayerAvatar person={friend} size="sm" />
+                  <PlayerAvatar person={member} size="sm" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">
-                      {displayName(friend)}
+                      {displayName(member)}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      @{friend.username}
+                      @{member.username}
                     </span>
                   </span>
-                  {friend.played > 0 && (
+                  {member.played > 0 && (
                     <span className="tnum shrink-0 text-xs text-muted-foreground">
-                      {friend.wins}-{friend.draws}-{friend.losses}
+                      {member.wins}-{member.draws}-{member.losses}
                     </span>
                   )}
                 </CommandItem>

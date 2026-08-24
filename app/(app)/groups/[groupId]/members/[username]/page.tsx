@@ -4,26 +4,30 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Swords } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
-import { UnfriendButton } from "@/components/friends/unfriend-button";
 import { MatchCard } from "@/components/match/match-card";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { ResultBar, StatTile } from "@/components/stat-tile";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { decimal, displayName, matchDate } from "@/lib/format";
+import { getGroup } from "@/lib/queries/groups";
 import { getMatches } from "@/lib/queries/matches";
-import { getH2HStats, getProfileByUsername } from "@/lib/queries/stats";
+import {
+  getH2HStats,
+  getH2HTeamStats,
+  getProfileByUsername,
+} from "@/lib/queries/stats";
 
 export async function generateMetadata({
   params,
-}: PageProps<"/friends/[username]">): Promise<Metadata> {
+}: PageProps<"/groups/[groupId]/members/[username]">): Promise<Metadata> {
   const { username } = await params;
   return { title: `@${username} · FIFA Tracker` };
 }
 
-export default async function HeadToHeadPage({
+export default async function GroupMemberH2HPage({
   params,
-}: PageProps<"/friends/[username]">) {
+}: PageProps<"/groups/[groupId]/members/[username]">) {
   const supabase = await createClient();
 
   const {
@@ -32,21 +36,31 @@ export default async function HeadToHeadPage({
 
   if (!user) redirect("/login");
 
-  const { username } = await params;
+  const { groupId, username } = await params;
+
+  // RLS scopes `groups` SELECT to members only, so this also confirms the
+  // signed-in user actually belongs to this group.
+  const group = await getGroup(supabase, groupId);
+  if (!group) notFound();
+
   const opponent = await getProfileByUsername(supabase, username);
-
   if (!opponent) notFound();
-  // Your own page is the dashboard, not a head-to-head against yourself.
-  if (opponent.id === user.id) redirect("/");
+  // Your own row is the group page, not a head-to-head against yourself.
+  if (opponent.id === user.id) redirect(`/groups/${groupId}`);
 
-  const [stats, matches, { data: isFriend }] = await Promise.all([
-    getH2HStats(supabase, opponent.id),
+  const [stats, teamStats, matches, { data: isMember }] = await Promise.all([
+    getH2HStats(supabase, groupId, opponent.id),
+    getH2HTeamStats(supabase, groupId, opponent.id),
     getMatches(supabase, {
+      groupId,
       playerId: user.id,
       opponentId: opponent.id,
       limit: 20,
     }),
-    supabase.rpc("are_friends", { a: user.id, b: opponent.id }),
+    supabase.rpc("is_group_member", {
+      p_group_id: groupId,
+      p_user: opponent.id,
+    }),
   ]);
 
   const name = displayName(opponent);
@@ -60,9 +74,9 @@ export default async function HeadToHeadPage({
         size="sm"
         className="-ml-2 text-muted-foreground"
       >
-        <Link href="/friends">
+        <Link href={`/groups/${groupId}`}>
           <ArrowLeft className="size-4" />
-          Friends
+          {group.name}
         </Link>
       </Button>
 
@@ -79,13 +93,6 @@ export default async function HeadToHeadPage({
             {stats.last_played && ` · last played ${matchDate(stats.last_played)}`}
           </p>
         </div>
-
-        {isFriend && (
-          <UnfriendButton
-            friendId={opponent.id}
-            username={opponent.username}
-          />
-        )}
       </div>
 
       {/* Head to head --------------------------------------------------- */}
@@ -95,7 +102,7 @@ export default async function HeadToHeadPage({
       >
         <div className="flex items-baseline justify-between">
           <h2 id="h2h-heading" className="text-sm font-semibold">
-            Head to head
+            Head to head in {group.name}
           </h2>
           <span className="tnum text-sm text-muted-foreground">
             {stats.played} {stats.played === 1 ? "match" : "matches"}
@@ -192,9 +199,54 @@ export default async function HeadToHeadPage({
         </section>
       )}
 
-      {isFriend && (
+      {/* Team-based head to head ------------------------------------------ */}
+      {teamStats.length > 0 && (
+        <section aria-labelledby="teams-heading" className="space-y-3">
+          <h2 id="teams-heading" className="text-sm font-semibold">
+            Your teams v {name}
+          </h2>
+          <div className="overflow-hidden rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <tbody>
+                {teamStats.map((row, index) => {
+                  const isBestPick =
+                    row.played >= 2 &&
+                    row.wins === Math.max(...teamStats.map((r) => (r.played >= 2 ? r.wins : -1)));
+
+                  return (
+                    <tr
+                      key={row.team_id}
+                      className={
+                        index < teamStats.length - 1
+                          ? "border-b border-border/60"
+                          : undefined
+                      }
+                    >
+                      <td className="py-2.5 pl-3 pr-2">
+                        <span className="font-medium">{row.team_name}</span>
+                        {isBestPick && (
+                          <span className="ml-2 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                            Best pick
+                          </span>
+                        )}
+                      </td>
+                      <td className="tnum py-2.5 pr-3 text-right text-muted-foreground">
+                        {row.wins}-{row.draws}-{row.losses}
+                        {" · "}
+                        {row.goals_for}-{row.goals_against}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {isMember && (
         <Button asChild className="h-12 w-full text-base">
-          <Link href={`/match/new?opponent=${opponent.id}`}>
+          <Link href={`/match/new?group=${groupId}&opponent=${opponent.id}`}>
             <Swords className="size-4" />
             Log a match v {name}
           </Link>
@@ -213,9 +265,9 @@ export default async function HeadToHeadPage({
             title="You have never played"
             description={`Log a result against ${name} and the head-to-head starts here.`}
             action={
-              isFriend
+              isMember
                 ? {
-                    href: `/match/new?opponent=${opponent.id}`,
+                    href: `/match/new?group=${groupId}&opponent=${opponent.id}`,
                     label: "Log a match",
                   }
                 : undefined

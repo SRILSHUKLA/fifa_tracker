@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { History, Swords } from "lucide-react";
+import { History, Swords, UsersRound } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { MatchCard } from "@/components/match/match-card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveGroup } from "@/lib/groups/active-group";
 import { getMatches } from "@/lib/queries/matches";
 
 export const metadata: Metadata = { title: "History · FIFA Tracker" };
@@ -24,6 +25,24 @@ export default async function HistoryPage({
 
   if (!user) redirect("/login");
 
+  const { active } = await getActiveGroup(supabase);
+
+  if (!active) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Match history</h1>
+        </div>
+        <EmptyState
+          icon={UsersRound}
+          title="No group yet"
+          description="History is scoped to a group. Create or join one first."
+          action={{ href: "/groups", label: "Find a group" }}
+        />
+      </div>
+    );
+  }
+
   const { page } = await searchParams;
   const pageNumber = Math.max(1, Number.parseInt(String(page ?? "1"), 10) || 1);
   const offset = (pageNumber - 1) * PAGE_SIZE;
@@ -31,6 +50,7 @@ export default async function HistoryPage({
   // Fetch one extra row to find out whether another page exists, which is
   // cheaper than a second count query.
   const rows = await getMatches(supabase, {
+    groupId: active.group.id,
     playerId: user.id,
     limit: PAGE_SIZE + 1,
     offset,
@@ -44,7 +64,7 @@ export default async function HistoryPage({
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Match history</h1>
         <p className="text-sm text-muted-foreground">
-          Every match you have played, newest first.
+          {active.group.name} · every match you have played, newest first.
         </p>
       </div>
 
@@ -59,7 +79,7 @@ export default async function HistoryPage({
           }
           action={
             pageNumber === 1
-              ? { href: "/match/new", label: "Log a match" }
+              ? { href: `/match/new?group=${active.group.id}`, label: "Log a match" }
               : { href: "/history", label: "Back to the start" }
           }
         />

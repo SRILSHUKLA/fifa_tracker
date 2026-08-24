@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { displayName } from "@/lib/format";
-import type { FriendSummary, Profile, Team } from "@/types/database.types";
+import type { GroupMemberSummary, Profile, Team } from "@/types/database.types";
 
 /** `datetime-local` wants "YYYY-MM-DDTHH:mm" in the browser's own timezone. */
 function toLocalInputValue(date: Date) {
@@ -21,22 +21,48 @@ function toLocalInputValue(date: Date) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
+export type MatchFormGroup = {
+  id: string;
+  name: string;
+  members: GroupMemberSummary[];
+};
+
 export function AddMatchForm({
   me,
-  friends,
+  groups,
   teams,
+  defaultGroupId,
   defaultOpponentId,
 }: {
   me: Profile;
-  friends: FriendSummary[];
+  /** The user's groups, each with its own member roster already loaded. */
+  groups: MatchFormGroup[];
   teams: Team[];
+  defaultGroupId?: string;
   defaultOpponentId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
+  const [groupId, setGroupId] = useState<string | null>(
+    (defaultGroupId && groups.some((g) => g.id === defaultGroupId)
+      ? defaultGroupId
+      : groups[0]?.id) ?? null,
+  );
+
+  const group = useMemo(
+    () => groups.find((g) => g.id === groupId) ?? null,
+    [groups, groupId],
+  );
+
+  // Opponent picking excludes the signed-in user — you cannot play yourself.
+  const members = useMemo(
+    () => group?.members.filter((member) => member.id !== me.id) ?? [],
+    [group, me.id],
+  );
+
   const [opponentId, setOpponentId] = useState<string | null>(
-    defaultOpponentId && friends.some((f) => f.id === defaultOpponentId)
+    defaultOpponentId && members.some((m) => m.id === defaultOpponentId)
       ? defaultOpponentId
       : null,
   );
@@ -48,9 +74,16 @@ export function AddMatchForm({
   const [backdating, setBackdating] = useState(false);
   const [playedAt, setPlayedAt] = useState(() => toLocalInputValue(new Date()));
 
+  function handleGroupChange(nextGroupId: string) {
+    setGroupId(nextGroupId);
+    // A different group means a different roster, so the previously chosen
+    // opponent may no longer even be selectable.
+    setOpponentId(null);
+  }
+
   const opponent = useMemo(
-    () => friends.find((friend) => friend.id === opponentId) ?? null,
-    [friends, opponentId],
+    () => members.find((member) => member.id === opponentId) ?? null,
+    [members, opponentId],
   );
 
   const opponentName = opponent ? displayName(opponent) : "Opponent";
@@ -67,6 +100,10 @@ export function AddMatchForm({
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
 
+    if (!groupId) {
+      toast.error("Choose a group first.");
+      return;
+    }
     if (!opponentId) {
       toast.error("Choose an opponent first.");
       return;
@@ -74,6 +111,7 @@ export function AddMatchForm({
 
     startTransition(async () => {
       const result = await logMatch({
+        groupId,
         opponentId,
         myScore,
         opponentScore,
@@ -92,16 +130,38 @@ export function AddMatchForm({
       toast.success(
         `${myScore}–${opponentScore} v ${opponentName} logged.`,
       );
-      router.push("/");
+      router.push(group ? `/groups/${group.id}` : "/");
     });
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {groups.length > 1 && (
+        <div className="space-y-2">
+          <Label>Group</Label>
+          <div className="flex flex-wrap gap-2">
+            {groups.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => handleGroupChange(g.id)}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  g.id === groupId
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {g.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-2">
         <Label>Opponent</Label>
         <OpponentPicker
-          friends={friends}
+          members={members}
           value={opponentId}
           onChange={setOpponentId}
         />
@@ -187,7 +247,7 @@ export function AddMatchForm({
 
       <Button
         type="submit"
-        disabled={pending || !opponentId}
+        disabled={pending || !groupId || !opponentId}
         className="h-13 w-full text-base"
       >
         {pending && <LoaderCircle className="size-4 animate-spin" />}
