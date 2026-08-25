@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { Swords, Trophy } from "lucide-react";
+import { ChevronRight, Swords, Trophy } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { InviteShare } from "@/components/groups/invite-share";
@@ -238,21 +238,44 @@ export default async function GroupDetailPage({
 
         {isOwner ? (
           <ul className="space-y-2">
-            {members.map((member) => (
-              <li
-                key={member.id}
-                className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5"
-              >
-                <MemberRow member={member} viewerId={user.id} />
-                {member.id !== user.id && (
-                  <RemoveMemberButton
-                    groupId={group.id}
-                    memberId={member.id}
-                    username={member.username}
-                  />
-                )}
-              </li>
-            ))}
+            {members.map((member) => {
+              const isSelf = member.id === user.id;
+
+              return (
+                <li
+                  key={member.id}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5"
+                >
+                  {isSelf ? (
+                    <div className="min-w-0 flex-1">
+                      <MemberRow member={member} viewerId={user.id} />
+                    </div>
+                  ) : (
+                    // min-w-0 matters here: without it this flex item's
+                    // default min-width is its own content's natural size,
+                    // which can push the row wider than its container and
+                    // shove RemoveMemberButton off the edge instead of
+                    // letting the truncation inside MemberRow do its job.
+                    <Link
+                      href={`/groups/${group.id}/members/${member.username}`}
+                      className="flex min-w-0 flex-1 items-center gap-2 transition-opacity active:opacity-70"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <MemberRow member={member} viewerId={user.id} />
+                      </div>
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                    </Link>
+                  )}
+                  {!isSelf && (
+                    <RemoveMemberButton
+                      groupId={group.id}
+                      memberId={member.id}
+                      username={member.username}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <MemberList groupId={group.id} members={members} viewerId={user.id} />
