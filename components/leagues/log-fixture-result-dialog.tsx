@@ -86,24 +86,34 @@ export function LogFixtureResultDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xs rounded-xl">
+      <DialogContent
+        className="rounded-xl"
+        // Radix focuses (and ScoreStepper's onFocus then selects) the first
+        // focusable element on open by default — with both scores starting
+        // at 0 the "−" buttons start disabled, so that would be the "You"
+        // score input, showing up pre-selected the instant the dialog
+        // opens. Nothing needs focus stolen here, so skip the auto-focus.
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>You v {opponentName}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex items-start justify-center gap-3">
+        <div className="flex items-start justify-center gap-2">
           <ScoreStepper
             label="You"
             value={myScore}
             onChange={setMyScore}
             highlight={myScore > opponentScore}
+            size="compact"
           />
-          <span className="pt-9 text-xl font-semibold text-muted-foreground">–</span>
+          <span className="pt-8 text-lg font-semibold text-muted-foreground">–</span>
           <ScoreStepper
             label={opponentName}
             value={opponentScore}
             onChange={setOpponentScore}
             highlight={opponentScore > myScore}
+            size="compact"
           />
         </div>
 
