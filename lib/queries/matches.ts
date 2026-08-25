@@ -201,10 +201,19 @@ export async function deleteMatch(supabase: Client, matchId: string) {
 
 export type EditMatchInput = {
   matchId: string;
-  myScore: number;
-  opponentScore: number;
-  myTeamId: number | null;
-  opponentTeamId: number | null;
+  /**
+   * Absolute orientation (matches.player_one_score / player_two_score),
+   * not "my score" — either participant can edit a match as of
+   * 0007_edit_match_either_player.sql, so unlike NewMatchInput there is no
+   * single caller who's always player_one to hang a perspective-relative
+   * shape off of. Callers should map from a "me/them" UI back to this with
+   * `isPlayerOne = match.player_one.id === viewerId` — see
+   * components/match/edit-match-dialog.tsx.
+   */
+  playerOneScore: number;
+  playerTwoScore: number;
+  playerOneTeamId: number | null;
+  playerTwoTeamId: number | null;
   playedAt: string;
   notes?: string | null;
   /** Required only when correcting a drawn knockout-stage league fixture. */
@@ -212,12 +221,9 @@ export type EditMatchInput = {
 };
 
 /**
- * Corrects an already-logged match's score, teams, or date. Only the
- * original logger may edit a match (the same rule this app has always used
- * for non-league matches — see 0001_init.sql), and since the logger is
- * always stored as player_one (createMatch, log_league_fixture_result),
- * myScore/opponentScore map straight onto player_one_score/player_two_score
- * with no perspective juggling needed.
+ * Corrects an already-logged match's score, teams, or date. Either
+ * participant may edit it (not just whoever originally logged it — see
+ * 0007_edit_match_either_player.sql).
  *
  * If this match is linked to a league fixture, the RPC also safely repairs
  * any downstream bookkeeping — standings recompute live either way, a plain
@@ -225,15 +231,16 @@ export type EditMatchInput = {
  * knockout fixture's winner can flip (re-wiring the next round's slot)
  * unless that next round has already been played, in which case the edit is
  * rejected rather than silently cascading. See edit_match in
- * 0006_edit_match.sql for the exact rules.
+ * 0006_edit_match.sql / 0007_edit_match_either_player.sql for the exact
+ * rules.
  */
 export async function editMatch(supabase: Client, input: EditMatchInput) {
   const { error } = await supabase.rpc("edit_match", {
     p_match_id: input.matchId,
-    p_player_one_score: input.myScore,
-    p_player_two_score: input.opponentScore,
-    p_player_one_team_id: input.myTeamId,
-    p_player_two_team_id: input.opponentTeamId,
+    p_player_one_score: input.playerOneScore,
+    p_player_two_score: input.playerTwoScore,
+    p_player_one_team_id: input.playerOneTeamId,
+    p_player_two_team_id: input.playerTwoTeamId,
     p_played_at: input.playedAt,
     p_notes: input.notes?.trim() || null,
     p_penalty_winner_id: input.penaltyWinnerId ?? null,

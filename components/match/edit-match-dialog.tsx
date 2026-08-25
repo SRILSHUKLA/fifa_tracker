@@ -30,11 +30,12 @@ function toLocalInputValue(date: Date) {
 
 /**
  * Corrects an already-logged match's score, teams, or date — for accidental
- * typos ("meant to log 1-3, logged 3-1"). Only ever rendered for a match the
- * viewer logged themselves (see components/match/match-card.tsx's `action`
- * usage on the history page), and the logger is always stored as
- * player_one, so "me"/"You" here always maps straight onto player_one with
- * no perspective juggling.
+ * typos ("meant to log 1-3, logged 3-1"). Rendered for either participant
+ * (see components/match/match-card.tsx's `action` usage on the history
+ * page) — the UI here is always framed as "You" v the opponent, but since
+ * either side can now be the one editing, `isPlayerOne` decides which way
+ * that maps onto the match's actual stored player_one/player_two before
+ * submitting (see edit_match's Args in 0007_edit_match_either_player.sql).
  *
  * A penalty-shootout picker appears only if this is a knockout-stage league
  * fixture and the live scores are level — see the same rule in
@@ -57,15 +58,15 @@ export function EditMatchDialog({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const { them } = fromPerspective(match, viewerId);
+  const isPlayerOne = match.player_one.id === viewerId;
+  const { them, myScore: initialMyScore, theirScore: initialTheirScore, myTeam, theirTeam } =
+    fromPerspective(match, viewerId);
   const opponentName = displayName(them);
 
-  const [myScore, setMyScore] = useState(match.player_one_score);
-  const [opponentScore, setOpponentScore] = useState(match.player_two_score);
-  const [myTeamId, setMyTeamId] = useState<number | null>(match.team_one?.id ?? null);
-  const [opponentTeamId, setOpponentTeamId] = useState<number | null>(
-    match.team_two?.id ?? null,
-  );
+  const [myScore, setMyScore] = useState(initialMyScore);
+  const [opponentScore, setOpponentScore] = useState(initialTheirScore);
+  const [myTeamId, setMyTeamId] = useState<number | null>(myTeam?.id ?? null);
+  const [opponentTeamId, setOpponentTeamId] = useState<number | null>(theirTeam?.id ?? null);
   const [playedAt, setPlayedAt] = useState(() => toLocalInputValue(new Date(match.played_at)));
   const [penaltyWinner, setPenaltyWinner] = useState<"me" | "opponent" | null>(null);
 
@@ -80,10 +81,10 @@ export function EditMatchDialog({
     startTransition(async () => {
       const result = await editMatchAction({
         matchId: match.id,
-        myScore,
-        opponentScore,
-        myTeamId,
-        opponentTeamId,
+        playerOneScore: isPlayerOne ? myScore : opponentScore,
+        playerTwoScore: isPlayerOne ? opponentScore : myScore,
+        playerOneTeamId: isPlayerOne ? myTeamId : opponentTeamId,
+        playerTwoTeamId: isPlayerOne ? opponentTeamId : myTeamId,
         playedAt: new Date(playedAt).toISOString(),
         notes: match.notes,
         penaltyWinnerId: needsPenalties ? (penaltyWinner === "me" ? viewerId : them.id) : null,
@@ -191,8 +192,10 @@ export function EditMatchDialog({
 
 /**
  * The pencil button that opens EditMatchDialog — passed as MatchCard's
- * `action` prop from the history page, for matches the viewer logged
- * themselves.
+ * `action` prop from the history page, for every match shown there (the
+ * history page already scopes its list to matches the viewer played in,
+ * and either participant may now edit a match — see
+ * 0007_edit_match_either_player.sql).
  */
 export function EditMatchButton({
   match,

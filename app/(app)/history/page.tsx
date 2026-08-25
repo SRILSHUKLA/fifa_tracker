@@ -243,11 +243,7 @@ export default async function HistoryPage({
                   key={match.id}
                   match={match}
                   viewerId={user.id}
-                  action={
-                    match.created_by === user.id ? (
-                      <EditMatchButton match={match} viewerId={user.id} teams={teams} />
-                    ) : undefined
-                  }
+                  action={<EditMatchButton match={match} viewerId={user.id} teams={teams} />}
                 />
               ))}
             </div>

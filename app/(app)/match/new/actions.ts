@@ -80,7 +80,7 @@ export async function editMatchAction(input: EditMatchInput): Promise<EditMatchR
 
   if (!user) return { ok: false, error: "You are not signed in." };
 
-  const scoresValid = [input.myScore, input.opponentScore].every(
+  const scoresValid = [input.playerOneScore, input.playerTwoScore].every(
     (score) => Number.isInteger(score) && score >= 0 && score <= 99,
   );
 

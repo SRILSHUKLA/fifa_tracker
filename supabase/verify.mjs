@@ -18,6 +18,7 @@ const MIGRATION_FILES = [
   "0004_team_logos.sql",
   "0005_leagues.sql",
   "0006_edit_match.sql",
+  "0007_edit_match_either_player.sql",
 ];
 
 const db = new PGlite();
@@ -1185,16 +1186,32 @@ check(
   { goals_for: 4, goals_against: 1, result: "win" },
 );
 
-let editByNonCreator = null;
+// The other participant (who didn't log it) can edit it too.
+await login(carol);
+await editMatch(editableMatch.id, 9, 9);
+const editedByCarolResult = (
+  await db.query(
+    `select goals_for::int, goals_against::int
+     from public.player_match_results where match_id = $1 and player_id = $2`,
+    [editableMatch.id, carol],
+  )
+).rows[0];
+check(
+  "the non-logging participant can also edit a shared match",
+  editedByCarolResult,
+  { goals_for: 9, goals_against: 9 },
+);
+
+let editByNonParticipant = null;
 try {
-  await login(carol); // carol played in it, but alice (not carol) logged it
-  await db.query(`select public.edit_match($1,$2,$3)`, [editableMatch.id, 9, 9]);
+  await login(erin); // erin has nothing to do with this match at all
+  await db.query(`select public.edit_match($1,$2,$3)`, [editableMatch.id, 1, 1]);
 } catch (error) {
-  editByNonCreator = error.message;
+  editByNonParticipant = error.message;
 }
 check(
-  "only the original logger can edit a regular match",
-  editByNonCreator?.includes("logged this match") ?? false,
+  "a total non-participant cannot edit someone else's match",
+  editByNonParticipant?.includes("two players") ?? false,
   true,
 );
 
@@ -1216,16 +1233,29 @@ check(
   { goals_for: 3, played: 1 },
 );
 
-let leagueEditByNonCreator = null;
+// The non-logging participant can edit a league match too.
+await login(grace);
+await editMatch(drrFixture.match_id, 5, 5);
+const drrStandingsAfterGraceEdit = await db.query(
+  `select goals_for::int, played::int from public.get_league_standings($1) where username = 'grace'`,
+  [drrLeague.id],
+);
+check(
+  "the non-logging participant can also edit a league match",
+  drrStandingsAfterGraceEdit.rows[0],
+  { goals_for: 5, played: 1 },
+);
+
+let leagueEditByNonParticipant = null;
 try {
-  await login(grace);
-  await db.query(`select public.edit_match($1,$2,$3)`, [drrFixture.match_id, 5, 5]);
+  await login(judy); // a leagueGroup member, but not part of this fixture
+  await db.query(`select public.edit_match($1,$2,$3)`, [drrFixture.match_id, 1, 1]);
 } catch (error) {
-  leagueEditByNonCreator = error.message;
+  leagueEditByNonParticipant = error.message;
 }
 check(
-  "only the original logger can edit a league match either",
-  leagueEditByNonCreator?.includes("logged this match") ?? false,
+  "a group member who isn't part of the fixture cannot edit its match",
+  leagueEditByNonParticipant?.includes("two players") ?? false,
   true,
 );
 
