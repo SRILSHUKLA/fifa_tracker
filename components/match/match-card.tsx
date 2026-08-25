@@ -16,10 +16,14 @@ export function MatchCard({
   match,
   viewerId,
   showOpponentLink = true,
+  action,
 }: {
   match: MatchWithPlayers;
   viewerId: string;
   showOpponentLink?: boolean;
+  /** Rendered as a sibling next to the card, e.g. an edit button — kept
+   * outside the opponent-profile Link so the two never fight over clicks. */
+  action?: React.ReactNode;
 }) {
   const { them, myScore, theirScore, myTeam, theirTeam, result } =
     fromPerspective(match, viewerId);
@@ -73,15 +77,31 @@ export function MatchCard({
     </div>
   );
 
-  if (!showOpponentLink) return body;
-
-  return (
+  const card = showOpponentLink ? (
     <Link
       href={`/groups/${match.group_id}/members/${them.username}`}
-      className="block transition-opacity active:opacity-70"
+      // min-w-0 matters once `action` puts this inside a flex row below —
+      // without it, a flex item defaults to a min-width equal to its own
+      // content's natural size, which can exceed the row's available space
+      // (the team-badge line inside `body` has a shrink-0 span) and push
+      // the whole row wider than its container, shoving the action button
+      // off past the edge instead of letting the card's own truncation do
+      // its job.
+      className="block min-w-0 flex-1 transition-opacity active:opacity-70"
       aria-label={`${opponentName}: ${myScore}–${theirScore}, ${result}`}
     >
       {body}
     </Link>
+  ) : (
+    <div className="min-w-0 flex-1">{body}</div>
+  );
+
+  if (!action) return card;
+
+  return (
+    <div className="flex items-stretch gap-2">
+      {card}
+      {action}
+    </div>
   );
 }

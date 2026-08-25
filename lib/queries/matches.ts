@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { Database, MatchResult } from "@/types/database.types";
+import type { Database, FixtureStage, MatchResult } from "@/types/database.types";
 
 export type Client = SupabaseClient<Database>;
 
@@ -32,6 +32,16 @@ export type MatchWithPlayers = {
   player_two: MatchPlayer;
   team_one: MatchTeam;
   team_two: MatchTeam;
+  /**
+   * Set when this match is linked to a league fixture (see
+   * league_fixtures.match_id in 0005_leagues.sql) — null for an ordinary
+   * match. Fetched via a separate follow-up query rather than a PostgREST
+   * embed in MATCH_SELECT, since league_fixtures.match_id is only unique
+   * through a partial index (not a table-level UNIQUE constraint), which
+   * makes PostgREST's one-to-one-vs-array embed cardinality detection
+   * unreliable to depend on here.
+   */
+  leagueFixtureStage: FixtureStage | null;
 };
 
 /**
@@ -97,9 +107,29 @@ export async function getMatches(
     );
   }
 
-  const { data, error } = await query.returns<MatchWithPlayers[]>();
+  const { data, error } = await query.returns<
+    Omit<MatchWithPlayers, "leagueFixtureStage">[]
+  >();
   if (error) throw error;
-  return data ?? [];
+  const matches = data ?? [];
+
+  const stageByMatch = new Map<string, FixtureStage>();
+  const matchIds = matches.map((m) => m.id);
+  if (matchIds.length > 0) {
+    const { data: fixtureRows, error: fixtureError } = await supabase
+      .from("league_fixtures")
+      .select("match_id, stage")
+      .in("match_id", matchIds);
+    if (fixtureError) throw fixtureError;
+    for (const row of fixtureRows ?? []) {
+      if (row.match_id) stageByMatch.set(row.match_id, row.stage);
+    }
+  }
+
+  return matches.map((m) => ({
+    ...m,
+    leagueFixtureStage: stageByMatch.get(m.id) ?? null,
+  }));
 }
 
 /**
@@ -166,5 +196,47 @@ export async function createMatch(
 
 export async function deleteMatch(supabase: Client, matchId: string) {
   const { error } = await supabase.from("matches").delete().eq("id", matchId);
+  if (error) throw error;
+}
+
+export type EditMatchInput = {
+  matchId: string;
+  myScore: number;
+  opponentScore: number;
+  myTeamId: number | null;
+  opponentTeamId: number | null;
+  playedAt: string;
+  notes?: string | null;
+  /** Required only when correcting a drawn knockout-stage league fixture. */
+  penaltyWinnerId?: string | null;
+};
+
+/**
+ * Corrects an already-logged match's score, teams, or date. Only the
+ * original logger may edit a match (the same rule this app has always used
+ * for non-league matches — see 0001_init.sql), and since the logger is
+ * always stored as player_one (createMatch, log_league_fixture_result),
+ * myScore/opponentScore map straight onto player_one_score/player_two_score
+ * with no perspective juggling needed.
+ *
+ * If this match is linked to a league fixture, the RPC also safely repairs
+ * any downstream bookkeeping — standings recompute live either way, a plain
+ * round robin's champion is recomputed if it already finished, and a
+ * knockout fixture's winner can flip (re-wiring the next round's slot)
+ * unless that next round has already been played, in which case the edit is
+ * rejected rather than silently cascading. See edit_match in
+ * 0006_edit_match.sql for the exact rules.
+ */
+export async function editMatch(supabase: Client, input: EditMatchInput) {
+  const { error } = await supabase.rpc("edit_match", {
+    p_match_id: input.matchId,
+    p_player_one_score: input.myScore,
+    p_player_two_score: input.opponentScore,
+    p_player_one_team_id: input.myTeamId,
+    p_player_two_team_id: input.opponentTeamId,
+    p_played_at: input.playedAt,
+    p_notes: input.notes?.trim() || null,
+    p_penalty_winner_id: input.penaltyWinnerId ?? null,
+  });
   if (error) throw error;
 }

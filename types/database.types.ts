@@ -1,6 +1,6 @@
 /**
  * Types for the FIFA Score Tracker schema (supabase/migrations/0001_init.sql,
- * 0003_groups.sql, 0005_leagues.sql).
+ * 0003_groups.sql, 0005_leagues.sql, 0006_edit_match.sql).
  *
  * Hand-written to match the shape `supabase gen types typescript` produces, so
  * once you have a project ref you can regenerate over the top of this file:
@@ -418,6 +418,20 @@ export type Database = {
       can_view_league: {
         Args: { p_league_id: string; p_user: string };
         Returns: boolean;
+      };
+
+      edit_match: {
+        Args: {
+          p_match_id: string;
+          p_player_one_score: number;
+          p_player_two_score: number;
+          p_player_one_team_id?: number | null;
+          p_player_two_team_id?: number | null;
+          p_played_at?: string | null;
+          p_notes?: string | null;
+          p_penalty_winner_id?: string | null;
+        };
+        Returns: undefined;
       };
     };
 

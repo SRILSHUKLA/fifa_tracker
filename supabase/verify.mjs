@@ -17,6 +17,7 @@ const MIGRATION_FILES = [
   "0003_groups.sql",
   "0004_team_logos.sql",
   "0005_leagues.sql",
+  "0006_edit_match.sql",
 ];
 
 const db = new PGlite();
@@ -228,7 +229,7 @@ const logMatch = (groupId, p1, p2, s1, s2, daysAgo, t1 = arsenal, t2 = chelsea) 
        (group_id, player_one_id, player_two_id, player_one_score, player_two_score,
         player_one_team_id, player_two_team_id, created_by, played_at)
      values ($1,$2,$3,$4,$5,$6,$7,$2, now() - ($8 || ' days')::interval)
-     returning winner_id`,
+     returning id, winner_id`,
     [groupId, p1, p2, s1, s2, t1, t2, String(daysAgo)],
   );
 
@@ -1155,6 +1156,255 @@ check(
   "an ordinary, non-league match can still be edited/deleted by its creator",
   (await rowsAsUser(alice, `delete from public.matches where id = $1 returning id`, [someMatch])).length,
   1,
+);
+
+// --- edit_match --------------------------------------------------------------
+/** p_player_one_team_id/p_player_two_team_id/p_played_at/p_penalty_winner_id
+ * default to null (keep no team / keep current date) unless passed. */
+function editMatch(matchId, s1, s2, t1 = null, t2 = null, penaltyWinnerId = null) {
+  return db.query(`select public.edit_match($1,$2,$3,$4,$5,$6,$7,$8)`, [
+    matchId, s1, s2, t1, t2, null, null, penaltyWinnerId,
+  ]);
+}
+
+// Regular (non-league) match: anyone can correct their own logged score.
+const editableMatch = (await logMatch(group1.id, alice, carol, 2, 2, 10)).rows[0];
+
+await login(alice);
+await editMatch(editableMatch.id, 4, 1);
+const editedResult = (
+  await db.query(
+    `select goals_for::int, goals_against::int, result
+     from public.player_match_results where match_id = $1 and player_id = $2`,
+    [editableMatch.id, alice],
+  )
+).rows[0];
+check(
+  "edit_match corrects a regular match's score, reflected immediately in player_match_results",
+  editedResult,
+  { goals_for: 4, goals_against: 1, result: "win" },
+);
+
+let editByNonCreator = null;
+try {
+  await login(carol); // carol played in it, but alice (not carol) logged it
+  await db.query(`select public.edit_match($1,$2,$3)`, [editableMatch.id, 9, 9]);
+} catch (error) {
+  editByNonCreator = error.message;
+}
+check(
+  "only the original logger can edit a regular match",
+  editByNonCreator?.includes("logged this match") ?? false,
+  true,
+);
+
+// League round robin, still in progress (no bracket to protect): a
+// correction just flows straight into live standings.
+await logFixture(drrLeague.id, "round_robin", frank, grace, 1, 0, frank);
+const drrFixture = (await fixturesOf(drrLeague.id)).find(
+  (f) => f.round === 1 && [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(grace),
+);
+await login(frank);
+await editMatch(drrFixture.match_id, 3, 0);
+const drrStandingsAfterEdit = await db.query(
+  `select goals_for::int, played::int from public.get_league_standings($1) where username = 'frank'`,
+  [drrLeague.id],
+);
+check(
+  "editing a round-robin score while the league is still in progress updates standings live",
+  drrStandingsAfterEdit.rows[0],
+  { goals_for: 3, played: 1 },
+);
+
+let leagueEditByNonCreator = null;
+try {
+  await login(grace);
+  await db.query(`select public.edit_match($1,$2,$3)`, [drrFixture.match_id, 5, 5]);
+} catch (error) {
+  leagueEditByNonCreator = error.message;
+}
+check(
+  "only the original logger can edit a league match either",
+  leagueEditByNonCreator?.includes("logged this match") ?? false,
+  true,
+);
+
+// round_robin_knockout: once the bracket has been seeded from the round
+// robin, its scores are locked — but team-only corrections still pass.
+const rrkFgFixture = (await fixturesOf(rrkLeague.id, "round_robin")).find(
+  (f) => [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(grace),
+);
+await login(frank);
+let lockedRRedit = null;
+try {
+  await editMatch(rrkFgFixture.match_id, 3, 1);
+} catch (error) {
+  lockedRRedit = error.message;
+}
+check(
+  "a round-robin score is locked once its knockout bracket has been seeded",
+  lockedRRedit?.includes("locked") ?? false,
+  true,
+);
+await editMatch(rrkFgFixture.match_id, 3, 0, chelsea, arsenal); // same score, different teams
+const teamOnlyEdit = (
+  await db.query(`select player_one_team_id, player_two_team_id from public.matches where id = $1`, [rrkFgFixture.match_id])
+).rows[0];
+check(
+  "a team-only correction on a locked round-robin fixture still succeeds",
+  teamOnlyEdit,
+  { player_one_team_id: chelsea, player_two_team_id: arsenal },
+);
+
+// Plain round robin, already completed: correcting a score recomputes the
+// champion from the new standings, no bracket involved.
+const srrFhFixture = (await fixturesOf(srrLeague.id)).find(
+  (f) => [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(heidi),
+);
+await login(heidi); // heidi logged the original frank-heidi draw
+await editMatch(srrFhFixture.match_id, 1, 3); // heidi=1, frank=3 -> frank now wins
+const standingsAfterSrrEdit = await db.query(
+  `select username, points::int, goal_difference::int
+   from public.get_league_standings($1) order by points desc, goal_difference desc, username`,
+  [srrLeague.id],
+);
+check("editing a completed round robin's score updates its standings", standingsAfterSrrEdit.rows, [
+  { username: "frank", points: 9, goal_difference: 6 },
+  { username: "heidi", points: 6, goal_difference: 3 },
+  { username: "grace", points: 3, goal_difference: -2 },
+  { username: "ivan", points: 0, goal_difference: -7 },
+]);
+const srrChampionAfterEdit = (
+  await db.query(`select champion_id from public.leagues where id = $1`, [srrLeague.id])
+).rows[0].champion_id;
+check(
+  "the champion is recomputed once a round-robin correction changes the standings leader",
+  srrChampionAfterEdit,
+  frank,
+);
+
+// Knockout, already completed: a same-winner correction is always fine,
+// even once the next round was already played...
+const semi1Fixture = (await fixturesOf(rrkLeague.id, "knockout")).find(
+  (f) => f.round === 1 && [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(ivan),
+);
+await login(frank); // frank logged the semifinal (and the final)
+await editMatch(semi1Fixture.match_id, 3, 1); // decisive now, still frank — no flip
+const semi1RowAfterSameWinnerEdit = (
+  await db.query(`select penalty_winner_id from public.league_fixtures where id = $1`, [semi1Fixture.id])
+).rows[0];
+check(
+  "a same-winner correction succeeds even though the next round was already played, and clears the now-unneeded penalty winner",
+  semi1RowAfterSameWinnerEdit.penalty_winner_id,
+  null,
+);
+check(
+  "the champion is unaffected since the semifinal winner never actually changed",
+  (await db.query(`select champion_id from public.leagues where id = $1`, [rrkLeague.id])).rows[0].champion_id,
+  frank,
+);
+
+// ...but flipping who won is blocked once they've already played on in the
+// next round — no silent cascade into someone else's already-logged match.
+let blockedFlip = null;
+try {
+  await editMatch(semi1Fixture.match_id, 0, 2); // frank=0, ivan=2 -> would flip to ivan
+} catch (error) {
+  blockedFlip = error.message;
+}
+check(
+  "flipping a knockout winner is blocked once they've already played in the next round",
+  blockedFlip?.includes("already played in the next round") ?? false,
+  true,
+);
+const semi1AfterBlockedAttempt = (
+  await db.query(`select player_one_score, player_two_score from public.matches where id = $1`, [semi1Fixture.match_id])
+).rows[0];
+check("the blocked edit left the match untouched", semi1AfterBlockedAttempt, {
+  player_one_score: 3,
+  player_two_score: 1,
+});
+
+// Editing the final itself has nothing downstream to protect, so flipping
+// its winner always just re-crowns the champion.
+const finalFixture = (await fixturesOf(rrkLeague.id, "knockout")).find((f) => f.round === 2);
+await editMatch(finalFixture.match_id, 1, 2); // frank=1, grace=2 -> grace wins instead
+check(
+  "editing the final's score re-crowns the champion",
+  (await db.query(`select champion_id from public.leagues where id = $1`, [rrkLeague.id])).rows[0].champion_id,
+  grace,
+);
+
+// Knockout, next round still pending: flipping the winner safely re-wires
+// the pending fixture's slot instead of being blocked.
+await login(frank);
+const rrk2League = (
+  await db.query(`select * from public.create_league($1,$2,$3,$4,$5)`, [
+    leagueGroup.id, "RRK2", "round_robin_knockout", arsenal, 4,
+  ])
+).rows[0];
+await login(grace);
+await db.query(`select public.join_league($1,$2)`, [rrk2League.id, chelsea]);
+await login(heidi);
+await db.query(`select public.join_league($1,$2)`, [rrk2League.id, realMadrid]);
+await login(ivan);
+await db.query(`select public.join_league($1,$2)`, [rrk2League.id, barcelona]);
+await login(frank);
+await db.query(`select public.start_league($1)`, [rrk2League.id]);
+
+await logFixture(rrk2League.id, "round_robin", frank, grace, 3, 0, frank);
+await logFixture(rrk2League.id, "round_robin", frank, heidi, 3, 0, frank);
+await logFixture(rrk2League.id, "round_robin", frank, ivan, 3, 0, frank);
+await logFixture(rrk2League.id, "round_robin", grace, heidi, 2, 0, grace);
+await logFixture(rrk2League.id, "round_robin", grace, ivan, 2, 0, grace);
+await logFixture(rrk2League.id, "round_robin", heidi, ivan, 2, 0, heidi);
+
+const rrk2Semi1Seed = (await fixturesOf(rrk2League.id, "knockout")).find(
+  (f) => f.round === 1 && [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(ivan),
+);
+const rrk2FinalId = (await fixturesOf(rrk2League.id, "knockout")).find((f) => f.round === 2).id;
+
+// Log semifinal 1 only — semifinal 2 and the final stay pending.
+await logFixture(rrk2League.id, "knockout", frank, ivan, 2, 0, frank);
+const rrk2Semi1 = (await fixturesOf(rrk2League.id, "knockout")).find((f) => f.id === rrk2Semi1Seed.id);
+const slotOf = (finalRow) => (rrk2Semi1.next_fixture_slot === 1 ? finalRow.player_one_id : finalRow.player_two_id);
+
+check(
+  "the final's slot is filled with the semifinal winner immediately after logging",
+  slotOf((await fixturesOf(rrk2League.id, "knockout")).find((f) => f.id === rrk2FinalId)),
+  frank,
+);
+
+await login(frank);
+await editMatch(rrk2Semi1.match_id, 0, 2); // frank=0, ivan=2 -> ivan now wins
+check(
+  "flipping a knockout winner re-wires the still-pending next fixture's slot",
+  slotOf((await fixturesOf(rrk2League.id, "knockout")).find((f) => f.id === rrk2FinalId)),
+  ivan,
+);
+
+let editDrawNoPenalty = null;
+try {
+  await editMatch(rrk2Semi1.match_id, 1, 1);
+} catch (error) {
+  editDrawNoPenalty = error.message;
+}
+check(
+  "editing a knockout fixture to a draw without a penalty winner is rejected",
+  editDrawNoPenalty?.includes("penalty shootout") ?? false,
+  true,
+);
+check(
+  "the rejected edit left the next fixture's slot unchanged",
+  slotOf((await fixturesOf(rrk2League.id, "knockout")).find((f) => f.id === rrk2FinalId)),
+  ivan,
+);
+
+await editMatch(rrk2Semi1.match_id, 2, 2, null, null, frank); // draw, frank wins on pens
+check(
+  "a penalty-shootout correction re-wires the next fixture to the new winner",
+  slotOf((await fixturesOf(rrk2League.id, "knockout")).find((f) => f.id === rrk2FinalId)),
+  frank,
 );
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}`);

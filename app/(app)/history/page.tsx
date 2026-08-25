@@ -5,6 +5,7 @@ import { History, Swords, UsersRound } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { LeaderboardTable } from "@/components/leaderboard-table";
+import { EditMatchButton } from "@/components/match/edit-match-dialog";
 import { MatchCard } from "@/components/match/match-card";
 import { FormGuide, ResultBar, StatTile } from "@/components/stat-tile";
 import { TeamBadge } from "@/components/team-badge";
@@ -238,7 +239,16 @@ export default async function HistoryPage({
           <>
             <div className="space-y-2">
               {matches.map((match) => (
-                <MatchCard key={match.id} match={match} viewerId={user.id} />
+                <MatchCard
+                  key={match.id}
+                  match={match}
+                  viewerId={user.id}
+                  action={
+                    match.created_by === user.id ? (
+                      <EditMatchButton match={match} viewerId={user.id} teams={teams} />
+                    ) : undefined
+                  }
+                />
               ))}
             </div>
 

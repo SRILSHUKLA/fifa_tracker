@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { createMatch, type NewMatchInput } from "@/lib/queries/matches";
+import {
+  createMatch,
+  editMatch,
+  type EditMatchInput,
+  type NewMatchInput,
+} from "@/lib/queries/matches";
 
 export type LogMatchResult = { ok: true } | { ok: false; error: string };
 
@@ -52,6 +57,41 @@ export async function logMatch(input: NewMatchInput): Promise<LogMatchResult> {
       error:
         (error as { message?: string })?.message ??
         "Could not save that match.",
+    };
+  }
+
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export type EditMatchResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Corrects an already-logged match. Runs on the server for the same reason
+ * logMatch does — the correction needs to show up on the pages we
+ * revalidate immediately, not just after the next client refetch.
+ */
+export async function editMatchAction(input: EditMatchInput): Promise<EditMatchResult> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { ok: false, error: "You are not signed in." };
+
+  const scoresValid = [input.myScore, input.opponentScore].every(
+    (score) => Number.isInteger(score) && score >= 0 && score <= 99,
+  );
+
+  if (!scoresValid) return { ok: false, error: "Scores must be 0-99." };
+
+  try {
+    await editMatch(supabase, input);
+  } catch (error) {
+    return {
+      ok: false,
+      error: (error as { message?: string })?.message ?? "Could not save that correction.",
     };
   }
 
