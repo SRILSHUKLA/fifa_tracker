@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { Swords } from "lucide-react";
+import { Swords, Trophy } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { InviteShare } from "@/components/groups/invite-share";
@@ -9,6 +9,7 @@ import { LeaveGroupButton } from "@/components/groups/leave-group-button";
 import { MemberList, MemberRow } from "@/components/groups/member-list";
 import { RemoveMemberButton } from "@/components/groups/remove-member-button";
 import { RenameGroupDialog } from "@/components/groups/rename-group-dialog";
+import { LeagueList } from "@/components/leagues/league-list";
 import { MatchCard } from "@/components/match/match-card";
 import { FormGuide, ResultBar, StatTile } from "@/components/stat-tile";
 import { TeamBadge } from "@/components/team-badge";
@@ -21,6 +22,10 @@ import {
   getGroupLeaderboard,
   getGroupMembers,
 } from "@/lib/queries/groups";
+import {
+  getGroupLeagues,
+  getParticipantCounts,
+} from "@/lib/queries/leagues";
 import { getGroupTeamStats, getRecentForm } from "@/lib/queries/stats";
 import { getTeams } from "@/lib/queries/teams";
 
@@ -52,14 +57,19 @@ export default async function GroupDetailPage({
   const group = await getGroup(supabase, groupId);
   if (!group) notFound();
 
-  const [members, leaderboard, matches, form, teamStats, teams] = await Promise.all([
+  const [members, leaderboard, matches, form, teamStats, teams, leagues] = await Promise.all([
     getGroupMembers(supabase, groupId),
     getGroupLeaderboard(supabase, groupId),
     getMatches(supabase, { groupId, limit: 5 }),
     getRecentForm(supabase, user.id, groupId, 5),
     getGroupTeamStats(supabase, groupId),
     getTeams(supabase),
+    getGroupLeagues(supabase, groupId),
   ]);
+  const leagueParticipantCounts = await getParticipantCounts(
+    supabase,
+    leagues.map((l) => l.id),
+  );
 
   const isOwner = group.owner_id === user.id;
   const myRow = leaderboard.find((row) => row.id === user.id) ?? null;
@@ -196,6 +206,29 @@ export default async function GroupDetailPage({
           Log a match
         </Link>
       </Button>
+
+      {/* Leagues ------------------------------------------------------------ */}
+      <section aria-labelledby="leagues-heading" className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 id="leagues-heading" className="text-sm font-semibold">
+            Leagues
+          </h2>
+          <Button asChild variant="ghost" size="sm">
+            <Link href={`/leagues/new?group=${group.id}`}>New league</Link>
+          </Button>
+        </div>
+
+        {leagues.length === 0 ? (
+          <EmptyState
+            icon={Trophy}
+            title="No leagues yet"
+            description="Start a round robin or knockout among this group's members."
+            action={{ href: `/leagues/new?group=${group.id}`, label: "Start a league" }}
+          />
+        ) : (
+          <LeagueList leagues={leagues} participantCounts={leagueParticipantCounts} />
+        )}
+      </section>
 
       {/* Members ---------------------------------------------------------- */}
       <section aria-labelledby="members-heading" className="space-y-3">

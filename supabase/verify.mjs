@@ -16,6 +16,7 @@ const MIGRATION_FILES = [
   "0002_seed_teams.sql",
   "0003_groups.sql",
   "0004_team_logos.sql",
+  "0005_leagues.sql",
 ];
 
 const db = new PGlite();
@@ -427,13 +428,23 @@ const rls = await db.query(`
   select relname, relrowsecurity
   from pg_class
   where relnamespace = 'public'::regnamespace
-    and relname in ('profiles','groups','group_members','teams','matches')
+    and relname in ('profiles','groups','group_members','teams','matches',
+                     'leagues','league_participants','league_fixtures')
   order by relname
 `);
 check(
   "RLS enabled on every table",
   rls.rows.map((r) => `${r.relname}:${r.relrowsecurity}`),
-  ["group_members:true", "groups:true", "matches:true", "profiles:true", "teams:true"],
+  [
+    "group_members:true",
+    "groups:true",
+    "league_fixtures:true",
+    "league_participants:true",
+    "leagues:true",
+    "matches:true",
+    "profiles:true",
+    "teams:true",
+  ],
 );
 
 const views = await db.query(`
@@ -617,6 +628,532 @@ check(
     group1.id,
     bob,
   ])).length,
+  1,
+);
+
+// --- Leagues -----------------------------------------------------------
+// Fresh group and fresh users, entirely separate from group1/group2, so
+// nothing here depends on (or is disturbed by) the membership churn the
+// groups admin section above already did to group1.
+const frank = await mk("frank@example.com", "frank");
+const grace = await mk("grace@example.com", "grace");
+const heidi = await mk("heidi@example.com", "heidi");
+const ivan = await mk("ivan@example.com", "ivan");
+const judy = await mk("judy@example.com", "judy"); // group member, never joins a league
+
+await login(frank);
+const leagueGroup = (await db.query(`select * from public.create_group($1)`, ["League HQ"])).rows[0];
+
+for (const u of [grace, heidi, ivan, judy]) {
+  await login(u);
+  await db.query(`select public.join_group($1)`, [leagueGroup.invite_code]);
+}
+
+const leagueParticipants = async (leagueId) =>
+  (
+    await db.query(
+      `select user_id, team_id from public.league_participants where league_id = $1 order by user_id`,
+      [leagueId],
+    )
+  ).rows;
+
+const fixturesOf = async (leagueId, stage = "round_robin") =>
+  (
+    await db.query(
+      `select id, round, slot, player_one_id, player_two_id, status, match_id,
+              next_fixture_id, next_fixture_slot
+       from public.league_fixtures
+       where league_id = $1 and stage = $2
+       order by round, slot`,
+      [leagueId, stage],
+    )
+  ).rows;
+
+/** Logs the fixture between userA and userB, with userA's score = scoreA,
+ * as whichever of the two actually calls it (loggerUser). */
+async function logFixture(leagueId, stage, userA, userB, scoreA, scoreB, loggerUser, extra = {}) {
+  const fixtures = await fixturesOf(leagueId, stage);
+  const f = fixtures.find(
+    (x) => [x.player_one_id, x.player_two_id].includes(userA) && [x.player_one_id, x.player_two_id].includes(userB),
+  );
+  if (!f) throw new Error(`fixture not found for ${userA} v ${userB}`);
+  await login(loggerUser);
+  const myScore = loggerUser === userA ? scoreA : scoreB;
+  const oppScore = loggerUser === userA ? scoreB : scoreA;
+  const result = (
+    await db.query(`select * from public.log_league_fixture_result($1,$2,$3,$4,$5,$6)`, [
+      f.id,
+      myScore,
+      oppScore,
+      extra.penaltyWinnerId ?? null,
+      extra.playedAt ?? null,
+      extra.notes ?? null,
+    ])
+  ).rows[0];
+  return { fixture: f, result };
+}
+
+// --- create_league: membership required, auto-joins the creator ------------
+await login(dave); // a real user, but not a member of leagueGroup
+let createAsOutsider = null;
+try {
+  await db.query(`select * from public.create_league($1,$2,$3,$4)`, [
+    leagueGroup.id,
+    "Outsider League",
+    "single_round_robin",
+    arsenal,
+  ]);
+} catch (error) {
+  createAsOutsider = error.message;
+}
+check("create_league rejects a non-group-member", createAsOutsider?.includes("member") ?? false, true);
+
+await login(frank);
+const srrLeague = (
+  await db.query(`select * from public.create_league($1,$2,$3,$4)`, [
+    leagueGroup.id,
+    "Single RR",
+    "single_round_robin",
+    arsenal,
+  ])
+).rows[0];
+check("create_league returns a draft league", srrLeague.status, "draft");
+check("create_league auto-joins the creator with their chosen team", await leagueParticipants(srrLeague.id), [
+  { user_id: frank, team_id: arsenal },
+]);
+
+// --- join_league -------------------------------------------------------------
+await login(dave);
+let joinAsOutsider = null;
+try {
+  await db.query(`select public.join_league($1,$2)`, [srrLeague.id, chelsea]);
+} catch (error) {
+  joinAsOutsider = error.message;
+}
+check("join_league rejects a non-group-member", joinAsOutsider?.includes("member") ?? false, true);
+
+await login(grace);
+await db.query(`select public.join_league($1,$2)`, [srrLeague.id, chelsea]);
+await login(heidi);
+await db.query(`select public.join_league($1,$2)`, [srrLeague.id, realMadrid]);
+await login(ivan);
+await db.query(`select public.join_league($1,$2)`, [srrLeague.id, barcelona]);
+check("join_league adds every joiner", (await leagueParticipants(srrLeague.id)).length, 4);
+
+await login(grace);
+await db.query(`select public.join_league($1,$2)`, [srrLeague.id, barcelona]); // change of mind
+check(
+  "re-joining pre-start with a different team upserts, not duplicates",
+  (await leagueParticipants(srrLeague.id)).find((p) => p.user_id === grace)?.team_id,
+  barcelona,
+);
+await db.query(`select public.join_league($1,$2)`, [srrLeague.id, chelsea]); // back to the team used below
+check("still 4 participants after the double-tap", (await leagueParticipants(srrLeague.id)).length, 4);
+
+// --- start_league --------------------------------------------------------------
+await login(grace);
+let startAsNonCreator = null;
+try {
+  await db.query(`select * from public.start_league($1)`, [srrLeague.id]);
+} catch (error) {
+  startAsNonCreator = error.message;
+}
+check("start_league rejects a non-creator", startAsNonCreator?.includes("creator") ?? false, true);
+
+await login(frank);
+const startedSrr = (await db.query(`select * from public.start_league($1)`, [srrLeague.id])).rows[0];
+check("start_league moves status to in_progress", startedSrr.status, "in_progress");
+
+await login(judy); // a real leagueGroup member, but never joined this league
+let joinAfterStart = null;
+try {
+  await db.query(`select public.join_league($1,$2)`, [srrLeague.id, arsenal]);
+} catch (error) {
+  joinAfterStart = error.message;
+}
+check("joining an already-started league is rejected", joinAfterStart?.includes("no longer open") ?? false, true);
+
+// round_robin_knockout: too few participants to start ------------------------
+await login(frank);
+const rrkLeague = (
+  await db.query(`select * from public.create_league($1,$2,$3,$4,$5)`, [
+    leagueGroup.id,
+    "RRK",
+    "round_robin_knockout",
+    arsenal,
+    4,
+  ])
+).rows[0];
+await login(grace);
+await db.query(`select public.join_league($1,$2)`, [rrkLeague.id, chelsea]);
+
+await login(frank);
+let startTooFew = null;
+try {
+  await db.query(`select * from public.start_league($1)`, [rrkLeague.id]);
+} catch (error) {
+  startTooFew = error.message;
+}
+check(
+  "starting a knockout league with fewer than knockout_size participants is rejected",
+  startTooFew?.includes("4") ?? false,
+  true,
+);
+
+await login(heidi);
+await db.query(`select public.join_league($1,$2)`, [rrkLeague.id, realMadrid]);
+await login(ivan);
+await db.query(`select public.join_league($1,$2)`, [rrkLeague.id, barcelona]);
+
+await login(frank);
+const startedRrk = (await db.query(`select * from public.start_league($1)`, [rrkLeague.id])).rows[0];
+check("start_league succeeds once knockout_size participants have joined", startedRrk.status, "in_progress");
+
+// --- double_round_robin: fixture-count generation ----------------------------
+await login(frank);
+const drrLeague = (
+  await db.query(`select * from public.create_league($1,$2,$3,$4)`, [
+    leagueGroup.id,
+    "Double RR",
+    "double_round_robin",
+    arsenal,
+  ])
+).rows[0];
+await login(grace);
+await db.query(`select public.join_league($1,$2)`, [drrLeague.id, chelsea]);
+await login(heidi);
+await db.query(`select public.join_league($1,$2)`, [drrLeague.id, realMadrid]);
+await login(ivan);
+await db.query(`select public.join_league($1,$2)`, [drrLeague.id, barcelona]);
+await login(frank);
+await db.query(`select public.start_league($1)`, [drrLeague.id]);
+
+const fixtureCounts = async (leagueId) =>
+  (
+    await db.query(
+      `select stage, round, count(*)::int as n
+       from public.league_fixtures where league_id = $1
+       group by stage, round order by stage, round`,
+      [leagueId],
+    )
+  ).rows;
+
+check("single_round_robin generates 6 fixtures, all round 1", await fixtureCounts(srrLeague.id), [
+  { stage: "round_robin", round: 1, n: 6 },
+]);
+check("double_round_robin generates 12 fixtures across two rounds", await fixtureCounts(drrLeague.id), [
+  { stage: "round_robin", round: 1, n: 6 },
+  { stage: "round_robin", round: 2, n: 6 },
+]);
+check(
+  "round_robin_knockout generates 6 round-robin fixtures and 0 knockout fixtures at start",
+  await fixtureCounts(rrkLeague.id),
+  [{ stage: "round_robin", round: 1, n: 6 }],
+);
+
+// --- Logging crosses over into matches / the group's regular leaderboard ----
+const { result: fgResult } = await logFixture(srrLeague.id, "round_robin", frank, grace, 2, 0, frank);
+check(
+  "log_league_fixture_result returns a real match id and the current league state",
+  {
+    hasMatch: fgResult.match_id != null,
+    fixture_id: fgResult.fixture_id,
+    league_status: fgResult.league_status,
+    champion_id: fgResult.champion_id,
+  },
+  {
+    hasMatch: true,
+    fixture_id: (await fixturesOf(srrLeague.id)).find(
+      (f) => [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(grace),
+    ).id,
+    league_status: "in_progress",
+    champion_id: null,
+  },
+);
+
+const fgMatch = (
+  await db.query(`select group_id, player_one_score, player_two_score from public.matches where id = $1`, [
+    fgResult.match_id,
+  ])
+).rows[0];
+check("the logged fixture result is a normal matches row scoped to the league's group", fgMatch.group_id, leagueGroup.id);
+
+const boardAfterOneMatch = await db.query(
+  `select username, played::int, wins::int from public.get_group_leaderboard($1)
+   where username in ('frank','grace') order by username`,
+  [leagueGroup.id],
+);
+check("the league match shows up in the group's regular leaderboard", boardAfterOneMatch.rows, [
+  { username: "frank", played: 1, wins: 1 },
+  { username: "grace", played: 1, wins: 0 },
+]);
+
+// Double-logging the same fixture is rejected.
+let doubleLog = null;
+try {
+  await db.query(`select * from public.log_league_fixture_result($1,$2,$3)`, [
+    (await fixturesOf(srrLeague.id)).find(
+      (f) => [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(grace),
+    ).id,
+    5,
+    0,
+  ]);
+} catch (error) {
+  doubleLog = error.message;
+}
+check("logging the same fixture twice is rejected", doubleLog?.includes("already logged") ?? false, true);
+
+// A group member who is not one of the fixture's two players cannot log it.
+const heidiIvanFixture = (await fixturesOf(srrLeague.id)).find(
+  (f) => [f.player_one_id, f.player_two_id].includes(heidi) && [f.player_one_id, f.player_two_id].includes(ivan),
+);
+await login(judy);
+let outsiderLog = null;
+try {
+  await db.query(`select * from public.log_league_fixture_result($1,$2,$3)`, [heidiIvanFixture.id, 1, 0]);
+} catch (error) {
+  outsiderLog = error.message;
+}
+check(
+  "a group member who isn't part of the fixture cannot log it",
+  outsiderLog?.includes("Only the two players") ?? false,
+  true,
+);
+
+// A round-robin draw with a penalty winner supplied is rejected; the same
+// fixture logged as a plain draw (no penalty winner) succeeds normally —
+// also the "either fixture player can log it" case, logged by heidi, not
+// the fixture's other side.
+let penaltyOnRoundRobinDraw = null;
+try {
+  const fhFixture = (await fixturesOf(srrLeague.id)).find(
+    (f) => [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(heidi),
+  );
+  await login(heidi);
+  await db.query(`select * from public.log_league_fixture_result($1,$2,$3,$4)`, [fhFixture.id, 1, 1, heidi]);
+} catch (error) {
+  penaltyOnRoundRobinDraw = error.message;
+}
+check(
+  "a penalty winner supplied for a round-robin draw is rejected",
+  penaltyOnRoundRobinDraw?.includes("only applies") ?? false,
+  true,
+);
+await logFixture(srrLeague.id, "round_robin", frank, heidi, 1, 1, heidi);
+check(
+  "the non-initiating side of a fixture can log it, and a round-robin draw needs no penalty winner",
+  (
+    await db.query(
+      `select status from public.league_fixtures where id = $1`,
+      [
+        (await fixturesOf(srrLeague.id)).find(
+          (f) => [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(heidi),
+        ).id,
+      ],
+    )
+  ).rows[0].status,
+  "completed",
+);
+
+// Finish the round robin with a designed-tied-on-points result so the
+// standings math and the goal-difference tiebreak are both exercised:
+// heidi and frank finish level on 7 points, heidi ahead on goal difference.
+await logFixture(srrLeague.id, "round_robin", frank, ivan, 2, 0, frank);
+await logFixture(srrLeague.id, "round_robin", grace, heidi, 0, 2, heidi);
+await logFixture(srrLeague.id, "round_robin", grace, ivan, 2, 0, grace);
+const { result: hiResult } = await logFixture(srrLeague.id, "round_robin", heidi, ivan, 3, 0, heidi);
+
+const standings = await db.query(
+  `select username, team_id, played::int, wins::int, draws::int, losses::int,
+          goals_for::int, goals_against::int, goal_difference::int, points::int
+   from public.get_league_standings($1)
+   order by points desc, goal_difference desc, username`,
+  [srrLeague.id],
+);
+check(
+  "get_league_standings computes the round-robin table correctly",
+  standings.rows,
+  [
+    { username: "heidi", team_id: realMadrid, played: 3, wins: 2, draws: 1, losses: 0, goals_for: 6, goals_against: 1, goal_difference: 5, points: 7 },
+    { username: "frank", team_id: arsenal,    played: 3, wins: 2, draws: 1, losses: 0, goals_for: 5, goals_against: 1, goal_difference: 4, points: 7 },
+    { username: "grace", team_id: chelsea,    played: 3, wins: 1, draws: 0, losses: 2, goals_for: 2, goals_against: 4, goal_difference: -2, points: 3 },
+    { username: "ivan",  team_id: barcelona,  played: 3, wins: 0, draws: 0, losses: 3, goals_for: 0, goals_against: 7, goal_difference: -7, points: 0 },
+  ],
+);
+
+check(
+  "the round robin completes and crowns the goal-difference tiebreak winner as champion",
+  { league_status: hiResult.league_status, champion_id: hiResult.champion_id },
+  { league_status: "completed", champion_id: heidi },
+);
+
+// --- Spectator visibility ----------------------------------------------------
+check(
+  "a group member who never joined the league can still read its fixtures",
+  (await rowsAsUser(judy, `select id from public.league_fixtures where league_id = $1`, [srrLeague.id])).length > 0,
+  true,
+);
+check(
+  "get_league_standings is visible to a spectator group member",
+  (await rowsAsUser(judy, `select id from public.get_league_standings($1)`, [srrLeague.id])).length,
+  4,
+);
+check(
+  "get_group_leaderboard (pre-existing RPC) is callable as the authenticated role — regression guard for the player_match_results grant this migration repairs",
+  (await rowsAsUser(judy, `select username from public.get_group_leaderboard($1)`, [leagueGroup.id])).length > 0,
+  true,
+);
+check(
+  "a total outsider sees none of the league's fixtures",
+  (await rowsAsUser(erin, `select id from public.league_fixtures where league_id = $1`, [srrLeague.id])).length,
+  0,
+);
+check(
+  "a total outsider sees none of the league row itself",
+  (await rowsAsUser(erin, `select id from public.leagues where id = $1`, [srrLeague.id])).length,
+  0,
+);
+
+// --- Multi-league isolation ---------------------------------------------------
+const srrFixtureIds = new Set((await fixturesOf(srrLeague.id)).map((f) => f.id));
+const drrFixtureIds = new Set((await fixturesOf(drrLeague.id)).map((f) => f.id));
+check(
+  "fixtures from two leagues in the same group never overlap",
+  [...srrFixtureIds].some((id) => drrFixtureIds.has(id)),
+  false,
+);
+check(
+  "a league's standings only cover its own participants",
+  (await db.query(`select count(*)::int as n from public.get_league_standings($1)`, [drrLeague.id])).rows[0].n,
+  4,
+);
+
+// --- round_robin_knockout: bracket generation, advancement, penalty shootout,
+// and champion crowning -------------------------------------------------------
+// Decisive (no-draw) round robin so seeding is unambiguous: frank 1st, grace
+// 2nd, heidi 3rd, ivan 4th.
+await logFixture(rrkLeague.id, "round_robin", frank, grace, 3, 0, frank);
+await logFixture(rrkLeague.id, "round_robin", frank, heidi, 3, 0, frank);
+await logFixture(rrkLeague.id, "round_robin", frank, ivan, 3, 0, frank);
+await logFixture(rrkLeague.id, "round_robin", grace, heidi, 2, 0, grace);
+await logFixture(rrkLeague.id, "round_robin", grace, ivan, 2, 0, grace);
+const { result: lastRrkGroupResult } = await logFixture(rrkLeague.id, "round_robin", heidi, ivan, 2, 0, heidi);
+check(
+  "the league is still in_progress once the round robin is done — the knockout bracket has its own rounds left",
+  lastRrkGroupResult.league_status,
+  "in_progress",
+);
+
+const knockoutFixtures = await fixturesOf(rrkLeague.id, "knockout");
+check("bracket generation creates exactly 3 knockout fixtures for a 4-team bracket", knockoutFixtures.length, 3);
+
+const semis = knockoutFixtures.filter((f) => f.round === 1);
+const final = knockoutFixtures.find((f) => f.round === 2);
+check("round 1 has 2 seeded semifinals and round 2 is the unfilled final", {
+  semiCount: semis.length,
+  semisSeeded: semis.every((f) => f.player_one_id != null && f.player_two_id != null),
+  finalEmpty: final != null && final.player_one_id == null && final.player_two_id == null,
+}, { semiCount: 2, semisSeeded: true, finalEmpty: true });
+
+const seed1v4 = semis.find(
+  (f) => [f.player_one_id, f.player_two_id].includes(frank) && [f.player_one_id, f.player_two_id].includes(ivan),
+);
+const seed2v3 = semis.find(
+  (f) => [f.player_one_id, f.player_two_id].includes(grace) && [f.player_one_id, f.player_two_id].includes(heidi),
+);
+check("the bracket seeds 1st v 4th and 2nd v 3rd", { seed1v4: seed1v4 != null, seed2v3: seed2v3 != null }, {
+  seed1v4: true,
+  seed2v3: true,
+});
+check(
+  "both semifinals wire into the final via next_fixture_id, at distinct slots",
+  {
+    sameFinal: seed1v4.next_fixture_id === final.id && seed2v3.next_fixture_id === final.id,
+    distinctSlots: seed1v4.next_fixture_slot !== seed2v3.next_fixture_slot,
+  },
+  { sameFinal: true, distinctSlots: true },
+);
+
+// Semifinal 1 (frank v ivan): a draw without a penalty winner is rejected...
+let noPenaltyOnKnockoutDraw = null;
+try {
+  await login(frank);
+  await db.query(`select * from public.log_league_fixture_result($1,$2,$3)`, [seed1v4.id, 1, 1]);
+} catch (error) {
+  noPenaltyOnKnockoutDraw = error.message;
+}
+check(
+  "a drawn knockout fixture without a penalty winner is rejected",
+  noPenaltyOnKnockoutDraw?.includes("penalty shootout") ?? false,
+  true,
+);
+// ...but succeeds once a penalty winner is supplied, and that's who advances.
+await logFixture(rrkLeague.id, "knockout", frank, ivan, 1, 1, frank, { penaltyWinnerId: frank });
+
+const finalAfterSemi1 = (
+  await db.query(`select player_one_id, player_two_id from public.league_fixtures where id = $1`, [final.id])
+).rows[0];
+check(
+  "the penalty-shootout winner fills the correct final slot; the other stays open",
+  {
+    filledSlot: seed1v4.next_fixture_slot === 1 ? finalAfterSemi1.player_one_id : finalAfterSemi1.player_two_id,
+    openSlot: seed1v4.next_fixture_slot === 1 ? finalAfterSemi1.player_two_id : finalAfterSemi1.player_one_id,
+  },
+  { filledSlot: frank, openSlot: null },
+);
+
+// Semifinal 2 (grace v heidi): supplying a penalty winner for a non-draw is
+// rejected...
+let penaltyOnDecisiveKnockout = null;
+try {
+  await login(grace);
+  await db.query(`select * from public.log_league_fixture_result($1,$2,$3,$4)`, [seed2v3.id, 2, 1, grace]);
+} catch (error) {
+  penaltyOnDecisiveKnockout = error.message;
+}
+check(
+  "a penalty winner supplied for a decisive knockout fixture is rejected",
+  penaltyOnDecisiveKnockout?.includes("only applies") ?? false,
+  true,
+);
+// ...a plain decisive result succeeds, filling the other final slot.
+const { result: semi2Result } = await logFixture(rrkLeague.id, "knockout", grace, heidi, 2, 1, grace);
+check("the league is still in_progress with the final still to play", semi2Result.league_status, "in_progress");
+
+const finalAfterSemi2 = (
+  await db.query(`select player_one_id, player_two_id from public.league_fixtures where id = $1`, [final.id])
+).rows[0];
+check(
+  "both final slots are filled once both semifinals are logged",
+  [finalAfterSemi2.player_one_id, finalAfterSemi2.player_two_id].sort(),
+  [frank, grace].sort(),
+);
+
+// Final: frank v grace.
+const { result: finalResult } = await logFixture(rrkLeague.id, "knockout", frank, grace, 2, 0, frank);
+check(
+  "logging the final crowns the champion and completes the league",
+  { league_status: finalResult.league_status, champion_id: finalResult.champion_id },
+  { league_status: "completed", champion_id: frank },
+);
+
+// --- Match-edit lock -----------------------------------------------------
+await login(frank);
+check(
+  "a league-linked match cannot be deleted directly by its creator",
+  (await rowsAsUser(frank, `delete from public.matches where id = $1 returning id`, [fgResult.match_id])).length,
+  0,
+);
+check(
+  "a league-linked match cannot be edited directly by its creator",
+  (
+    await rowsAsUser(frank, `update public.matches set notes = 'nope' where id = $1 returning id`, [fgResult.match_id])
+  ).length,
+  0,
+);
+check(
+  "an ordinary, non-league match can still be edited/deleted by its creator",
+  (await rowsAsUser(alice, `delete from public.matches where id = $1 returning id`, [someMatch])).length,
   1,
 );
 

@@ -1,6 +1,6 @@
 /**
  * Types for the FIFA Score Tracker schema (supabase/migrations/0001_init.sql,
- * 0003_groups.sql).
+ * 0003_groups.sql, 0005_leagues.sql).
  *
  * Hand-written to match the shape `supabase gen types typescript` produces, so
  * once you have a project ref you can regenerate over the top of this file:
@@ -21,6 +21,10 @@ export type Json =
 
 export type MatchResult = "win" | "loss" | "draw";
 export type GroupRole = "owner" | "member";
+export type LeagueType = "single_round_robin" | "double_round_robin" | "round_robin_knockout";
+export type LeagueStatus = "draft" | "in_progress" | "completed";
+export type FixtureStage = "round_robin" | "knockout";
+export type FixtureStatus = "pending" | "completed";
 
 export type Database = {
   public: {
@@ -144,6 +148,68 @@ export type Database = {
         };
         /** No INSERT policy: rows are created only by create_group()/join_group(). */
         Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+
+      leagues: {
+        Row: {
+          id: string;
+          group_id: string;
+          name: string;
+          type: LeagueType;
+          status: LeagueStatus;
+          /** Only set for round_robin_knockout: 2, 4, 8 or 16. */
+          knockout_size: number | null;
+          created_by: string;
+          champion_id: string | null;
+          created_at: string;
+          started_at: string | null;
+          completed_at: string | null;
+        };
+        /** No INSERT policy: rows are created only by create_league(). */
+        Insert: never;
+        /** No UPDATE policy: rows are only ever changed by start_league()/log_league_fixture_result(). */
+        Update: never;
+        Relationships: [];
+      };
+
+      league_participants: {
+        Row: {
+          league_id: string;
+          user_id: string;
+          /** Locked in for the whole league once it starts. */
+          team_id: number;
+          joined_at: string;
+        };
+        /** No INSERT policy: rows are created only by create_league()/join_league(). */
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+
+      league_fixtures: {
+        Row: {
+          id: string;
+          league_id: string;
+          stage: FixtureStage;
+          round: number;
+          slot: number;
+          /** Null for a knockout slot not yet decided by an earlier round. */
+          player_one_id: string | null;
+          player_two_id: string | null;
+          /** Knockout bracket wiring. Null for round-robin fixtures and the final. */
+          next_fixture_id: string | null;
+          next_fixture_slot: number | null;
+          match_id: string | null;
+          status: FixtureStatus;
+          /** Knockout-only: set iff the linked match was a score draw. */
+          penalty_winner_id: string | null;
+          created_at: string;
+        };
+        /** No INSERT policy: rows are created only by start_league()/_generate_league_knockout(). */
+        Insert: never;
+        /** No UPDATE policy: rows are only ever changed by log_league_fixture_result(). */
         Update: never;
         Relationships: [];
       };
@@ -283,6 +349,76 @@ export type Database = {
         Args: { u: string };
         Returns: boolean;
       };
+
+      create_league: {
+        Args: {
+          p_group_id: string;
+          p_name: string;
+          p_type: LeagueType;
+          p_team_id: number;
+          p_knockout_size?: number | null;
+        };
+        Returns: Database["public"]["Tables"]["leagues"]["Row"];
+      };
+
+      join_league: {
+        Args: { p_league_id: string; p_team_id: number };
+        Returns: Database["public"]["Tables"]["league_participants"]["Row"];
+      };
+
+      start_league: {
+        Args: { p_league_id: string };
+        Returns: Database["public"]["Tables"]["leagues"]["Row"];
+      };
+
+      log_league_fixture_result: {
+        Args: {
+          p_fixture_id: string;
+          p_my_score: number;
+          p_opponent_score: number;
+          p_penalty_winner_id?: string | null;
+          p_played_at?: string;
+          p_notes?: string | null;
+        };
+        Returns: {
+          match_id: string;
+          fixture_id: string;
+          league_status: LeagueStatus;
+          champion_id: string | null;
+        }[];
+      };
+
+      get_league_standings: {
+        Args: { p_league_id: string };
+        Returns: {
+          id: string;
+          username: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          team_id: number;
+          team_name: string;
+          played: number;
+          wins: number;
+          draws: number;
+          losses: number;
+          goals_for: number;
+          goals_against: number;
+          goal_difference: number;
+          points: number;
+          /** null until the player has played at least one round-robin-stage match. */
+          win_pct: number | null;
+        }[];
+      };
+
+      is_league_participant: {
+        Args: { p_league_id: string; p_user: string };
+        Returns: boolean;
+      };
+
+      can_view_league: {
+        Args: { p_league_id: string; p_user: string };
+        Returns: boolean;
+      };
     };
 
     Enums: Record<string, never>;
@@ -313,3 +449,11 @@ export type H2HTeamStat =
   Database["public"]["Functions"]["get_h2h_team_stats"]["Returns"][number];
 export type GroupTeamStat =
   Database["public"]["Functions"]["get_group_team_stats"]["Returns"][number];
+
+export type League = Database["public"]["Tables"]["leagues"]["Row"];
+export type LeagueParticipant = Database["public"]["Tables"]["league_participants"]["Row"];
+export type LeagueFixture = Database["public"]["Tables"]["league_fixtures"]["Row"];
+export type LeagueStandingRow =
+  Database["public"]["Functions"]["get_league_standings"]["Returns"][number];
+export type LeagueFixtureResult =
+  Database["public"]["Functions"]["log_league_fixture_result"]["Returns"][number];
