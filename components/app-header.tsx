@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LogOut } from "lucide-react";
 
 import { signOut } from "@/app/(auth)/actions";
@@ -16,11 +17,17 @@ export function AppHeader({ profile }: { profile: Profile }) {
         <Brand size="sm" />
 
         <div className="flex items-center gap-2">
-          <Avatar className="size-8">
-            <AvatarFallback className="bg-secondary text-xs font-semibold">
-              {initials(name)}
-            </AvatarFallback>
-          </Avatar>
+          <Link
+            href="/history"
+            aria-label="Your stats and match history"
+            className="rounded-full transition-opacity active:opacity-70"
+          >
+            <Avatar className="size-8 ring-1 ring-transparent ring-offset-2 ring-offset-background transition-[box-shadow] hover:ring-border">
+              <AvatarFallback className="bg-secondary text-xs font-semibold">
+                {initials(name)}
+              </AvatarFallback>
+            </Avatar>
+          </Link>
 
           <form action={signOut}>
             <Button

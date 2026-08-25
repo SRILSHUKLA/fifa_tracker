@@ -4,12 +4,12 @@ import { redirect } from "next/navigation";
 import { Trophy, UsersRound } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
+import { LeaderboardTable } from "@/components/leaderboard-table";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { createClient } from "@/lib/supabase/server";
-import { decimal, displayName, signed } from "@/lib/format";
+import { displayName } from "@/lib/format";
 import { getActiveGroup } from "@/lib/groups/active-group";
 import { getGroupLeaderboard } from "@/lib/queries/groups";
-import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Leaderboard · Bragging Rights" };
 
@@ -69,104 +69,7 @@ export default async function LeaderboardPage() {
           }}
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full min-w-[420px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-card text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th scope="col" className="py-2 pl-3 pr-1 text-left font-medium">
-                  #
-                </th>
-                <th scope="col" className="py-2 text-left font-medium">
-                  Player
-                </th>
-                <th scope="col" className="px-1.5 py-2 text-right font-medium">
-                  P
-                </th>
-                <th scope="col" className="px-1.5 py-2 text-right font-medium">
-                  W
-                </th>
-                <th scope="col" className="px-1.5 py-2 text-right font-medium">
-                  D
-                </th>
-                <th scope="col" className="px-1.5 py-2 text-right font-medium">
-                  L
-                </th>
-                <th scope="col" className="px-1.5 py-2 text-right font-medium">
-                  GD
-                </th>
-                <th scope="col" className="px-1.5 py-2 text-right font-medium">
-                  Win%
-                </th>
-                <th scope="col" className="py-2 pl-1.5 pr-3 text-right font-medium">
-                  Pts
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {ranked.map((row, index) => {
-                const isMe = row.id === user.id;
-
-                return (
-                  <tr
-                    key={row.id}
-                    className={cn(
-                      "border-b border-border/60 last:border-0",
-                      isMe && "bg-primary/10",
-                    )}
-                  >
-                    <td
-                      className={cn(
-                        "tnum py-2.5 pl-3 pr-1 text-left font-semibold",
-                        index === 0 ? "text-primary" : "text-muted-foreground",
-                      )}
-                    >
-                      {index + 1}
-                    </td>
-
-                    <td className="py-2.5 pr-2">
-                      <Link
-                        href={
-                          isMe
-                            ? "/"
-                            : `/groups/${active.group.id}/members/${row.username}`
-                        }
-                        className="flex min-w-0 items-center gap-2"
-                      >
-                        <PlayerAvatar person={row} size="sm" highlight={isMe} />
-                        <span className="min-w-0 truncate font-medium">
-                          {displayName(row)}
-                        </span>
-                      </Link>
-                    </td>
-
-                    <td className="tnum px-1.5 py-2.5 text-right text-muted-foreground">
-                      {row.played}
-                    </td>
-                    <td className="tnum px-1.5 py-2.5 text-right">{row.wins}</td>
-                    <td className="tnum px-1.5 py-2.5 text-right">{row.draws}</td>
-                    <td className="tnum px-1.5 py-2.5 text-right">{row.losses}</td>
-                    <td
-                      className={cn(
-                        "tnum px-1.5 py-2.5 text-right",
-                        row.goal_difference > 0 && "text-win",
-                        row.goal_difference < 0 && "text-loss",
-                      )}
-                    >
-                      {signed(row.goal_difference)}
-                    </td>
-                    <td className="tnum px-1.5 py-2.5 text-right text-muted-foreground">
-                      {row.win_pct != null ? `${decimal(row.win_pct)}%` : "—"}
-                    </td>
-                    <td className="tnum py-2.5 pl-1.5 pr-3 text-right font-bold">
-                      {row.points}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <LeaderboardTable rows={ranked} viewerId={user.id} groupId={active.group.id} />
       )}
 
       {unranked.length > 0 && (
@@ -180,7 +83,7 @@ export default async function LeaderboardPage() {
                 key={row.id}
                 href={
                   row.id === user.id
-                    ? "/"
+                    ? "/history"
                     : `/groups/${active.group.id}/members/${row.username}`
                 }
                 className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-3 text-sm"

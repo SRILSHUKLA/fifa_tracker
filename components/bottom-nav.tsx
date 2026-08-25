@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, Home, Medal, Plus, Trophy, UsersRound } from "lucide-react";
+import { Home, Medal, Plus, Trophy, UsersRound } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+// History moved off the bar and into the profile avatar in AppHeader (see
+// app-header.tsx) — with Leagues added there was no longer room for 5 tabs
+// either side of the raised centre button without crowding it off-centre.
 const TABS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/leaderboard", label: "Table", icon: Trophy },
   { href: "/groups", label: "Groups", icon: UsersRound },
   { href: "/leagues", label: "Leagues", icon: Medal },
-  { href: "/history", label: "History", icon: History },
 ] as const;
 
 /**
@@ -32,7 +34,7 @@ export function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <div className="mx-auto grid max-w-lg grid-cols-6 items-end px-2">
+      <div className="mx-auto grid max-w-lg grid-cols-5 items-end px-2">
         {TABS.slice(0, 2).map((tab) => (
           <NavTab key={tab.href} {...tab} active={isActive(tab.href)} />
         ))}
