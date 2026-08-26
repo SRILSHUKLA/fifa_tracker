@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Bragging Rights",
+    "slug": "bragging-rights",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/logo.png",
+    "scheme": "bragging-rights",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "backgroundColor": "#0a0a0b"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0a0a0b"
+      },
+      "predictiveBackGestureEnabled": false,
+      "backgroundColor": "#0a0a0b"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0a0a0b"
+        }
+      ],
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": false
+    }
+  }
+}
