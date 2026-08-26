@@ -1,0 +1,153 @@
+@import "tailwindcss";
+@import "uniwind";
+
+@import "heroui-native/styles";
+
+/* End-user path: heroui-native lives in the project's node_modules, one
+   level up from this src/global.css file. */
+@source '../node_modules/heroui-native/lib';
+
+/*
+ * Bragging Rights is dark-only — it is used at night, on a sofa, next to a
+ * TV. Both variants are overridden with the web app's palette so every
+ * HeroUI Native component matches 1:1 (see app/globals.css in the web app).
+ */
+@layer theme {
+  :root {
+    @variant light {
+      --background: oklch(0.141 0.005 285.823);
+      --foreground: oklch(0.985 0 0);
+
+      --surface: oklch(0.194 0.006 285.9);
+      --surface-foreground: oklch(0.985 0 0);
+      --surface-secondary: oklch(0.245 0.006 286);
+      --surface-secondary-foreground: oklch(0.985 0 0);
+      --surface-tertiary: oklch(0.274 0.006 286.033);
+      --surface-tertiary-foreground: oklch(0.985 0 0);
+
+      --overlay: oklch(0.216 0.006 285.885);
+      --overlay-foreground: oklch(0.985 0 0);
+      --backdrop: oklch(0% 0 0 / 60%);
+
+      --muted: oklch(0.705 0.015 286.067);
+
+      --default: oklch(0.274 0.006 286.033);
+      --default-foreground: oklch(0.985 0 0);
+
+      /* The one vibrant red. Reserved for primary actions, the add-match
+         button and the current user's own row — if it is red, it is either
+         you or a thing you can tap. */
+      --accent: oklch(0.601 0.237 26.5);
+      --accent-foreground: oklch(0.99 0 0);
+
+      --field-background: oklch(0.194 0.006 285.9);
+      --field-foreground: oklch(0.985 0 0);
+      --field-placeholder: oklch(0.705 0.015 286.067);
+
+      --success: oklch(0.723 0.166 149.6);
+      --success-foreground: oklch(0.141 0.005 285.823);
+      --danger: oklch(0.637 0.237 25.331);
+      --danger-foreground: oklch(0.99 0 0);
+
+      --border: oklch(1 0 0 / 10%);
+      --separator: oklch(1 0 0 / 12%);
+      --focus: var(--accent);
+      --link: var(--foreground);
+
+      --surface-shadow: 0 0 0 0 transparent inset;
+      --overlay-shadow: 0 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+      --field-shadow: 0 0 0 0 transparent inset;
+    }
+
+    @variant dark {
+      --background: oklch(0.141 0.005 285.823);
+      --foreground: oklch(0.985 0 0);
+
+      --surface: oklch(0.194 0.006 285.9);
+      --surface-foreground: oklch(0.985 0 0);
+      --surface-secondary: oklch(0.245 0.006 286);
+      --surface-secondary-foreground: oklch(0.985 0 0);
+      --surface-tertiary: oklch(0.274 0.006 286.033);
+      --surface-tertiary-foreground: oklch(0.985 0 0);
+
+      --overlay: oklch(0.216 0.006 285.885);
+      --overlay-foreground: oklch(0.985 0 0);
+      --backdrop: oklch(0% 0 0 / 60%);
+
+      --muted: oklch(0.705 0.015 286.067);
+
+      --default: oklch(0.274 0.006 286.033);
+      --default-foreground: oklch(0.985 0 0);
+
+      --accent: oklch(0.601 0.237 26.5);
+      --accent-foreground: oklch(0.99 0 0);
+
+      --field-background: oklch(0.194 0.006 285.9);
+      --field-foreground: oklch(0.985 0 0);
+      --field-placeholder: oklch(0.705 0.015 286.067);
+
+      --success: oklch(0.723 0.166 149.6);
+      --success-foreground: oklch(0.141 0.005 285.823);
+      --danger: oklch(0.637 0.237 25.331);
+      --danger-foreground: oklch(0.99 0 0);
+
+      --border: oklch(1 0 0 / 10%);
+      --separator: oklch(1 0 0 / 12%);
+      --focus: var(--accent);
+      --link: var(--foreground);
+
+      --surface-shadow: 0 0 0 0 transparent inset;
+      --overlay-shadow: 0 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+      --field-shadow: 0 0 0 0 transparent inset;
+    }
+  }
+
+  /*
+   * Match outcomes. Green / grey / red is the reading people already have
+   * from every league table, so the brand red doubles as "loss".
+   */
+  @variant light {
+    --win: oklch(0.723 0.166 149.6);
+    --draw: oklch(0.705 0.015 286.067);
+    --loss: oklch(0.637 0.237 25.331);
+  }
+  @variant dark {
+    --win: oklch(0.723 0.166 149.6);
+    --draw: oklch(0.705 0.015 286.067);
+    --loss: oklch(0.637 0.237 25.331);
+  }
+}
+
+/* Expose the outcome colors as Tailwind utilities: text-win, bg-win/15 … */
+@theme inline {
+  --color-win: var(--win);
+  --color-draw: var(--draw);
+  --color-loss: var(--loss);
+}
+
+/* The web app's base radius (rounded-xl cards, rounded-full pills). */
+@theme {
+  --font-normal: "Geist_400Regular";
+  --font-medium: "Geist_500Medium";
+  --font-semibold: "Geist_600SemiBold";
+  --font-bold: "Geist_700Bold";
+  --radius: 0.75rem;
+}
+
+/*
+ * Map Tailwind's weight utilities onto the loaded Geist faces. React
+ * Native resolves weights per registered family, so font-bold has to pick
+ * the exact 700 face rather than synthesize one.
+ */
+@utility font-normal {
+  font-family: var(--font-normal);
+}
+@utility font-medium {
+  font-family: var(--font-medium);
+}
+@utility font-semibold {
+  font-family: var(--font-semibold);
+}
+@utility font-bold {
+  font-family: var(--font-bold);
+}
