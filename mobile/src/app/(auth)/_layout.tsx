@@ -1,4 +1,4 @@
-import { Redirect, Stack } from "expo-router";
+import { Redirect, Stack, usePathname } from "expo-router";
 import type { JSX } from "react";
 import { View } from "react-native";
 
@@ -8,8 +8,12 @@ import { useAuth } from "@/lib/auth";
  * Signed-in users never see it. */
 export default function AuthLayout(): JSX.Element {
   const { session, isLoading } = useAuth();
+  const pathname = usePathname();
 
-  if (!isLoading && session) {
+  // reset-password's own session comes from verifyOtp-ing the emailed
+  // recovery link, not a normal sign-in — bouncing away here would strand
+  // the user before they get to set a new password.
+  if (!isLoading && session && pathname !== "/reset-password") {
     return <Redirect href="/(tabs)" />;
   }
 

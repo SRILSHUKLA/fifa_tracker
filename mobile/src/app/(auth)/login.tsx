@@ -80,9 +80,21 @@ export default function LoginScreen(): JSX.Element {
             </View>
 
             <View className="gap-1.5">
-              <Text className="text-sm font-medium text-foreground">
-                Password
-              </Text>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm font-medium text-foreground">
+                  Password
+                </Text>
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="Forgot password?"
+                  hitSlop={6}
+                  onPress={() => router.push("/forgot-password")}
+                >
+                  <Text className="text-xs font-semibold text-accent">
+                    Forgot password?
+                  </Text>
+                </Pressable>
+              </View>
               <Input
                 value={password}
                 onChangeText={setPassword}

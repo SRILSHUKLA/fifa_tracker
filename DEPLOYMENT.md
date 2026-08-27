@@ -148,6 +148,22 @@ has two halves: gather the info now, apply it after.
    - Add `https://<production-domain>/**` to the **Redirect URLs**
      allow-list (keep any existing `http://localhost:3000/**` entry too, so
      local dev keeps working).
+   - Also add `bragging-rights://**` to the same allow-list — this is the
+     mobile app's custom URL scheme (`mobile/app.json`'s `"scheme"`), needed
+     so the "Reset Password" email link can open the Expo app directly. If
+     this is missing, `resetPasswordForEmail` on mobile fails with
+     "requested path is invalid" instead of sending the email.
+   - Confirm the **Reset Password** email template (Authentication → Email
+     Templates) builds its link as
+     `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery` rather
+     than the default `{{ .ConfirmationURL }}`. The app's forgot-password
+     flow (web: `app/(auth)/actions.ts`'s `requestPasswordReset`, mobile:
+     `mobile/src/app/(auth)/forgot-password.tsx`) depends on this — without
+     it, the emailed link won't carry the `token_hash`/`type` params that
+     `app/auth/confirm/route.ts` and the mobile reset-password screen read.
+     `{{ .RedirectTo }}` is used instead of `{{ .SiteURL }}` specifically so
+     the one template can point at either the web app or the mobile app,
+     whichever one made the request.
    This step needs a human or browser access to the Supabase dashboard —
    if you have the Browser tool, you can navigate there and describe what
    to click, but do not enter or approve anything without the user present,

@@ -2,22 +2,38 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { AlertCircle, LoaderCircle } from "lucide-react";
+import { AlertCircle, LoaderCircle, MailCheck } from "lucide-react";
 
-import { signIn, type AuthState } from "../actions";
+import { requestPasswordReset, type AuthState } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const INITIAL: AuthState = { error: null };
 
-export function LoginForm({ next }: { next?: string }) {
-  const [state, formAction, pending] = useActionState(signIn, INITIAL);
+export function ForgotPasswordForm({ sent }: { sent: boolean }) {
+  const [state, formAction, pending] = useActionState(
+    requestPasswordReset,
+    INITIAL,
+  );
+
+  if (sent) {
+    return (
+      <div className="space-y-4 text-center">
+        <MailCheck className="mx-auto size-8 text-primary" />
+        <p className="text-sm text-muted-foreground">
+          If that email has an account, a reset link is on its way. Check
+          your inbox — the link works once and expires after a while.
+        </p>
+        <Button asChild variant="secondary" className="h-12 w-full text-base">
+          <Link href="/login">Back to sign in</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <form action={formAction} className="space-y-4">
-      <input type="hidden" name="next" value={next ?? "/"} />
-
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -28,27 +44,6 @@ export function LoginForm({ next }: { next?: string }) {
           autoComplete="email"
           autoCapitalize="none"
           placeholder="you@example.com"
-          required
-          className="h-12 text-base"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="password">Password</Label>
-          <Link
-            href="/forgot-password"
-            className="text-xs font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Forgot password?
-          </Link>
-        </div>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          placeholder="••••••••"
           required
           className="h-12 text-base"
         />
@@ -66,16 +61,15 @@ export function LoginForm({ next }: { next?: string }) {
 
       <Button type="submit" disabled={pending} className="h-12 w-full text-base">
         {pending && <LoaderCircle className="size-4 animate-spin" />}
-        Sign in
+        Send reset link
       </Button>
 
       <p className="pt-2 text-center text-sm text-muted-foreground">
-        No account?{" "}
         <Link
-          href="/signup"
+          href="/login"
           className="font-medium text-primary underline-offset-4 hover:underline"
         >
-          Create one
+          Back to sign in
         </Link>
       </p>
     </form>
