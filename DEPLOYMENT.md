@@ -153,17 +153,22 @@ has two halves: gather the info now, apply it after.
      so the "Reset Password" email link can open the Expo app directly. If
      this is missing, `resetPasswordForEmail` on mobile fails with
      "requested path is invalid" instead of sending the email.
-   - Confirm the **Reset Password** email template (Authentication → Email
-     Templates) builds its link as
-     `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery` rather
-     than the default `{{ .ConfirmationURL }}`. The app's forgot-password
-     flow (web: `app/(auth)/actions.ts`'s `requestPasswordReset`, mobile:
-     `mobile/src/app/(auth)/forgot-password.tsx`) depends on this — without
-     it, the emailed link won't carry the `token_hash`/`type` params that
-     `app/auth/confirm/route.ts` and the mobile reset-password screen read.
-     `{{ .RedirectTo }}` is used instead of `{{ .SiteURL }}` specifically so
-     the one template can point at either the web app or the mobile app,
-     whichever one made the request.
+   - The forgot-password flow (`app/(auth)/actions.ts`'s
+     `requestPasswordReset`, `mobile/src/app/(auth)/forgot-password.tsx`)
+     works with Supabase's **default** Reset Password email template —
+     nothing to edit there, which matters because template editing is
+     locked behind custom SMTP on this project (Authentication → Emails →
+     Reset password shows "Set up custom SMTP to edit templates" otherwise).
+     It relies on both `@supabase/ssr` (web) and the mobile Supabase client
+     defaulting to `flowType: "pkce"`, so the emailed link carries a plain
+     `?code=` that `app/auth/confirm/route.ts` / the mobile reset-password
+     screen exchange for a session via `exchangeCodeForSession`. The
+     trade-off: that exchange only works in the same browser/app instance
+     that requested the reset, so a reset requested on one device and opened
+     from a different device's mail app will show as an expired link — a
+     real limitation, not a bug, and the only real fix is custom SMTP plus a
+     template rewritten to use `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery`
+     (both route/screen already have a dormant code path ready for that).
    This step needs a human or browser access to the Supabase dashboard —
    if you have the Browser tool, you can navigate there and describe what
    to click, but do not enter or approve anything without the user present,

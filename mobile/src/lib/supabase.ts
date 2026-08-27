@@ -16,5 +16,13 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    // Password recovery relies on this: it makes resetPasswordForEmail
+    // stash a code_verifier in AsyncStorage and put a plain `?code=` query
+    // param in the emailed link (via the default, unedited Reset Password
+    // template — this project has no custom SMTP, so the template can't be
+    // changed to the `token_hash` form the web app additionally supports).
+    // The default "implicit" flow would instead put tokens after a `#`,
+    // which expo-router's route params can't see. See reset-password.tsx.
+    flowType: "pkce",
   },
 });

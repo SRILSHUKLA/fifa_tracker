@@ -33,9 +33,9 @@ export default function ForgotPasswordScreen(): JSX.Element {
     }
 
     setPending(true);
-    // GoTrue's /verify redirects here with ?token_hash=…&type=recovery
-    // appended, per the Reset Password email template. This screen is
-    // matched by expo-router from the "reset-password" path segment.
+    // GoTrue's /verify redirects here with ?code=… appended (see
+    // lib/supabase.ts's flowType: "pkce"). expo-router matches this to
+    // reset-password.tsx from the "reset-password" path segment.
     await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: Linking.createURL("reset-password"),
     });

@@ -111,8 +111,8 @@ export async function requestPasswordReset(
   const origin = (await headers()).get("origin");
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    // GoTrue's /verify redirects here with ?token_hash=…&type=recovery
-    // appended, per the Reset Password email template — see auth/confirm.
+    // GoTrue's /verify redirects here with ?code=… appended, since this
+    // client's default flowType is "pkce" — see auth/confirm/route.ts.
     redirectTo: `${origin}/auth/confirm`,
   });
 

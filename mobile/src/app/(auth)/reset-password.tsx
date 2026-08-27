@@ -18,20 +18,18 @@ import { supabase } from "@/lib/supabase";
 
 /**
  * Landed on from the "Reset Password" email link (bragging-rights:///reset-
- * password?token_hash=…&type=recovery — see forgot-password.tsx's redirectTo
- * and the Supabase dashboard's Reset Password template).
+ * password?code=… — see forgot-password.tsx's redirectTo and lib/supabase.ts's
+ * flowType: "pkce", which is what puts a plain `?code=` query param in the
+ * link rather than tokens after a `#` that route params can't see).
  *
- * `verifyOtp` establishes a real session from the token_hash, which is what
- * lets `updateUser` below actually change the password. The auth _layout
- * normally bounces a signed-in user away from every screen in this group —
- * it special-cases this route so that session doesn't kick the user out
- * before they get to set a new password.
+ * `exchangeCodeForSession` establishes a real session from that code, which
+ * is what lets `updateUser` below actually change the password. The auth
+ * _layout normally bounces a signed-in user away from every screen in this
+ * group — it special-cases this route so that session doesn't kick the user
+ * out before they get to set a new password.
  */
 export default function ResetPasswordScreen(): JSX.Element {
-  const { token_hash, type } = useLocalSearchParams<{
-    token_hash?: string;
-    type?: string;
-  }>();
+  const { code } = useLocalSearchParams<{ code?: string }>();
   const router = useRouter();
 
   const [verifying, setVerifying] = useState(true);
@@ -45,19 +43,17 @@ export default function ResetPasswordScreen(): JSX.Element {
     let cancelled = false;
 
     async function run() {
-      if (!token_hash || type !== "recovery") {
+      if (!code) {
         setVerifyError("This reset link is invalid.");
         setVerifying(false);
         return;
       }
 
-      const { error: otpError } = await supabase.auth.verifyOtp({
-        type: "recovery",
-        token_hash,
-      });
+      const { error: exchangeError } =
+        await supabase.auth.exchangeCodeForSession(code);
       if (cancelled) return;
 
-      if (otpError) {
+      if (exchangeError) {
         setVerifyError("This reset link has expired or was already used.");
       }
       setVerifying(false);
@@ -67,7 +63,7 @@ export default function ResetPasswordScreen(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [token_hash, type]);
+  }, [code]);
 
   async function handleSubmit() {
     setError(null);
