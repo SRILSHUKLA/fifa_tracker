@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -90,6 +91,61 @@ export async function signUp(
       return { error: `@${username} was just taken. Pick another.` };
     }
     return { error: error.message };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
+export async function requestPasswordReset(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "").trim();
+
+  if (!email) {
+    return { error: "Enter your email." };
+  }
+
+  const supabase = await createClient();
+  const origin = (await headers()).get("origin");
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    // GoTrue's /verify redirects here with ?code=… appended, since this
+    // client's default flowType is "pkce" — see auth/confirm/route.ts.
+    redirectTo: `${origin}/auth/confirm`,
+  });
+
+  // Supabase deliberately succeeds even for an unknown address, so this
+  // page can't be used to check whether an email has an account. A real
+  // failure here (e.g. rate limiting) is the only thing worth surfacing.
+  if (error) {
+    return { error: "Could not send the email. Try again in a moment." };
+  }
+
+  redirect("/forgot-password?sent=1");
+}
+
+export async function updatePassword(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const password = String(formData.get("password") ?? "");
+
+  if (password.length < 6) {
+    return { error: "Use a password of at least 6 characters." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) {
+    // The recovery session behind this page has its own short lifetime,
+    // separate from a normal sign-in — this is what expires or double-use
+    // of the email link looks like.
+    return {
+      error: "Your reset link has expired or was already used.",
+    };
   }
 
   revalidatePath("/", "layout");

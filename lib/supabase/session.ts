@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "./env";
 
 /** Routes reachable while signed out. Everything else redirects to /login. */
-const PUBLIC_ROUTES = ["/login", "/signup", "/auth"];
+const PUBLIC_ROUTES = ["/login", "/signup", "/forgot-password", "/auth"];
 
 /**
  * Refreshes the Supabase auth cookie and gates private routes.
@@ -53,7 +53,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(target);
   }
 
-  if (user && (pathname === "/login" || pathname === "/signup")) {
+  if (
+    user &&
+    (pathname === "/login" ||
+      pathname === "/signup" ||
+      pathname === "/forgot-password")
+  ) {
     const target = request.nextUrl.clone();
     target.pathname = "/";
     target.search = "";
